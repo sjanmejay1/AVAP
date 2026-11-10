@@ -34,7 +34,7 @@ container never joined `dokploy-network`. Distinguish it from:
 | 404 + valid cert, Next.js 404 page   | router fine, the app returned the 404       |
 | 502 / Bad Gateway                    | router fine, container unreachable/unhealthy |
 
-`docker-compose.dokploy.yml` fixes this by joining the external network.
+`docker-compose.yml` fixes this by joining the external network and declaring its own Traefik labels.
 
 ## Two hostnames are required
 
@@ -58,16 +58,16 @@ Let's Encrypt's HTTP-01 challenge fails if it does not resolve.
 
 ## Configuration split
 
-Routing is owned by the **Dokploy UI (Domains tab)**. The compose file
-deliberately carries no `traefik.http.*` labels: two routers matching the
-same `Host()` rule is ambiguous. It contributes only the network wiring plus
-one `traefik.docker.network` hint on `backend`, which is attached to two
-networks and would otherwise risk Traefik picking the wrong container IP.
+Routing is declared in `docker-compose.yml` via Traefik labels (the Dokploy UI
+only injects labels into services that already have a `labels:` block, so
+UI-managed routing left the frontend without a router). **Do not also add the
+domains in the Dokploy Domains tab** — two routers on the same `Host()` rule
+are ambiguous.
 
 | Concern                    | Owned by                        |
 | -------------------------- | ------------------------------- |
-| Hostname, port, TLS/cert   | Dokploy UI, Domains tab         |
-| Network attachment         | `docker-compose.dokploy.yml`    |
+| Hostname, port, TLS/cert   | `docker-compose.yml` labels, from `FRONTEND_DOMAIN` / `BACKEND_DOMAIN` |
+| Network attachment         | `docker-compose.yml`            |
 | App config (CORS, API URL) | Dokploy UI, Environment tab     |
 
 ## Setup
@@ -75,18 +75,12 @@ networks and would otherwise risk Traefik picking the wrong container IP.
 1. **DNS.** A records for both hostnames pointing at the Dokploy host.
    Verify with `dig +short <hostname>`.
 
-2. **Compose path.** In the Dokploy service, set the Compose Path to
-   `docker-compose.dokploy.yml`.
+2. **Compose path.** `docker-compose.yml` (the default).
 
-3. **Domains tab.** One entry per exposed service:
+3. **Domains tab.** Leave empty — routing comes from the compose labels.
 
-   | Service  | Host                  | Path | Port | HTTPS | Cert        |
-   | -------- | --------------------- | ---- | ---- | ----- | ----------- |
-   | frontend | `avap.rentrik.in`     | `/`  | 3000 | on    | letsencrypt |
-   | backend  | `api-avap.rentrik.in` | `/`  | 8000 | on    | letsencrypt |
-
-4. **Environment tab.** These configure the application, not the routing, and
-   are required even though the domains are managed in the UI:
+4. **Environment tab.** Required (they drive both the app config and the
+   Traefik routing labels):
 
    ```
    POSTGRES_PASSWORD=<strong-password>
@@ -95,7 +89,8 @@ networks and would otherwise risk Traefik picking the wrong container IP.
    OPENROUTER_API_KEY=<key, or leave blank>
    ```
 
-   Hostnames only — no scheme, no trailing slash; the compose file adds
+   Use an alphanumeric `POSTGRES_PASSWORD` (it is embedded in the database
+   URL unescaped). Hostnames only — no scheme, no trailing slash; the compose file adds
    `https://`. `FRONTEND_DOMAIN` becomes the backend's allowed CORS origin;
    `BACKEND_DOMAIN` becomes the API URL compiled into the browser bundle.
 
@@ -143,7 +138,7 @@ docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api-avap.rentrik.in \
 
 - No host ports are published; Traefik reaches the containers over
   `dokploy-network`, so nothing collides with other stacks on the host.
-- The database is on the private `internal` network only.
+- The database is on the private default network only.
 - Serving the UI from a hostname other than `FRONTEND_DOMAIN` will be
   rejected by the browser — CORS is pinned to exactly that origin.
 - Migrations run automatically on backend start via
