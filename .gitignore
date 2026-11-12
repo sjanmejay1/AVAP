@@ -8,3 +8,13 @@ Run.md
 deployment.md
 docker-data/
 volumes/
+.declutter-trash/
+.claude/
+logs/
+generated_reports/
+docs/archive/
+audit/
+.venv
+.ruff_cache/
+.mypy_cache/
+.uv_env/
