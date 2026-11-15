@@ -1,4 +1,8 @@
+import ctypes
 import logging
+import os
+import shutil
+import subprocess
 import uuid
 
 from app.core.config import get_settings
@@ -9,6 +13,98 @@ from app.scanners.scan_artifact import ScanArtifact
 from app.scanners.scanner_executor import ScannerExecutor
 
 logger = logging.getLogger(__name__)
+
+# Markers in nmap stderr indicating a privilege/permission failure
+_PRIVILEGE_ERROR_MARKERS = [
+    "requires root privileges",
+    "operation not permitted",
+    "need to be root",
+    "requires privileges",
+    "privilege",
+    "dnet: failed to open",
+    "pcap_open_live",
+]
+
+
+def detect_privileged_mode(settings=None) -> bool:
+    """Detect whether Nmap has the privileges required for raw-socket features.
+
+    Checks:
+    - If NMAP_SCAN_MODE is 'privileged', returns True.
+    - If NMAP_SCAN_MODE is 'unprivileged', returns False.
+    - If 'auto':
+      - On Windows: check if user is Administrator OR Npcap is installed.
+      - On POSIX: check if euid == 0 OR nmap binary has cap_net_raw capabilities.
+    """
+    if settings is None:
+        settings = get_settings()
+
+    mode = (settings.nmap_scan_mode or "auto").strip().lower()
+    if mode == "privileged":
+        return True
+    if mode == "unprivileged":
+        return False
+
+    # Mode is 'auto': probe the system environment
+    if os.name == "nt":
+        # 1. Check if process is elevated administrator
+        try:
+            if ctypes.windll.shell32.IsUserAnAdmin() != 0:
+                return True
+        except Exception:  # noqa: S110
+            pass
+
+        # 2. Check for Npcap registry keys (allows raw packet operations via driver)
+        try:
+            import winreg
+
+            npcap_keys = [
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Npcap"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Npcap"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\npcap"),
+            ]
+            for hive, key_path in npcap_keys:
+                try:
+                    k = winreg.OpenKey(hive, key_path)
+                    winreg.CloseKey(k)
+                    return True
+                except OSError:
+                    continue
+        except Exception:  # noqa: S110
+            pass
+
+        return False
+
+    # POSIX platform
+    geteuid_fn = getattr(os, "geteuid", None)
+    if geteuid_fn is not None and geteuid_fn() == 0:
+        return True
+
+    # Check for file capabilities using getcap
+    nmap_path = settings.nmap_executable or shutil.which("nmap") or "nmap"
+    getcap_bin = shutil.which("getcap") or "/usr/sbin/getcap"
+    try:
+        res = subprocess.run(  # noqa: S603 # nosec B603
+            [getcap_bin, nmap_path],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if "cap_net_raw" in res.stdout:
+            return True
+    except Exception:  # noqa: S110
+        pass
+
+    return False
+
+
+def _is_privilege_error(stderr_output: str) -> bool:
+    """Check if stderr contains an Nmap raw-socket / permission failure message."""
+    if not stderr_output:
+        return False
+    lower_stderr = stderr_output.lower()
+    return any(marker in lower_stderr for marker in _PRIVILEGE_ERROR_MARKERS)
 
 
 class NmapAdapter(BaseScannerAdapter):
@@ -44,7 +140,11 @@ class NmapAdapter(BaseScannerAdapter):
         return sanitized
 
     def build_command(
-        self, target: str, scan_profile: ScanProfile, output_path: str
+        self,
+        target: str,
+        scan_profile: ScanProfile,
+        output_path: str,
+        force_privileged: bool | None = None,
     ) -> list[str]:
         """Construct the secure command-line argument list for Nmap.
 
@@ -52,6 +152,7 @@ class NmapAdapter(BaseScannerAdapter):
             target: The normalized target IP/hostname/CIDR.
             scan_profile: The ScanProfile enum value.
             output_path: The file path where the scanner should write its XML output.
+            force_privileged: Optional override for privileged mode in FULL profile.
 
         Returns:
             A list of command-line arguments starting with the Nmap executable.
@@ -63,7 +164,6 @@ class NmapAdapter(BaseScannerAdapter):
         if not executable:
             executable = "nmap"
 
-        # XML output flag is mandatory for parser to consume
         args = [executable]
 
         # Configure scan options based on profile
@@ -72,7 +172,58 @@ class NmapAdapter(BaseScannerAdapter):
         elif scan_profile == ScanProfile.PORT_SCAN:
             args.extend(["-sT", "-F"])  # TCP Connect scan, Fast mode
         elif scan_profile == ScanProfile.FULL:
-            args.extend(["-sT", "-sV"])  # TCP Connect scan + Service Version detection
+            is_priv = (
+                force_privileged
+                if force_privileged is not None
+                else detect_privileged_mode(self.settings)
+            )
+
+            if is_priv:
+                args.extend(
+                    [
+                        "-sS",
+                        "-sV",
+                        "-O",
+                        "--osscan-guess",
+                        "-sC",
+                        "--traceroute",
+                        "-p-",
+                        "-Pn",
+                        "-T4",
+                        "--version-intensity",
+                        "7",
+                        "--max-retries",
+                        "2",
+                        "--host-timeout",
+                        "90m",
+                        "--stats-every",
+                        "30s",
+                    ]
+                )
+            else:
+                logger.warning(
+                    "Executing FULL scan in unprivileged mode: "
+                    "OS detection and SYN scan unavailable. "
+                    "Falling back to -sT."
+                )
+                args.extend(
+                    [
+                        "-sT",
+                        "-sV",
+                        "-sC",
+                        "-p-",
+                        "-Pn",
+                        "-T4",
+                        "--version-intensity",
+                        "7",
+                        "--max-retries",
+                        "2",
+                        "--host-timeout",
+                        "90m",
+                        "--stats-every",
+                        "30s",
+                    ]
+                )
         else:
             # Fallback/default if unrecognized
             args.extend(["-sT"])
@@ -90,6 +241,9 @@ class NmapAdapter(BaseScannerAdapter):
     ) -> ScanArtifact:
         """Execute the Nmap scan and return a standardized ScanArtifact.
 
+        If a privileged scan fails with a privilege error, it retries once
+        with the unprivileged variant and logs a warning.
+
         Args:
             scan_id: The unique scan job identifier.
             target: The normalized target IP/hostname/CIDR.
@@ -106,7 +260,14 @@ class NmapAdapter(BaseScannerAdapter):
         filename = f"nmap_{scan_id}.xml"
         output_path = output_dir / filename
 
-        cmd_args = self.build_command(target, scan_profile, str(output_path))
+        is_privileged = (
+            detect_privileged_mode(self.settings)
+            if scan_profile == ScanProfile.FULL
+            else False
+        )
+        cmd_args = self.build_command(
+            target, scan_profile, str(output_path), force_privileged=is_privileged
+        )
 
         try:
             artifact = self.executor.run_scanner(
@@ -114,7 +275,32 @@ class NmapAdapter(BaseScannerAdapter):
                 cmd_args=cmd_args,
                 scan_id=scan_id,
                 output_path=output_path,
+                timeout=self.settings.scan_timeout,
             )
+
+            # Check if execution failed due to privilege/permission errors
+            if (
+                artifact.exit_code != 0
+                and is_privileged
+                and scan_profile == ScanProfile.FULL
+                and _is_privilege_error(artifact.stderr)
+            ):
+                logger.warning(
+                    "Privileged Nmap scan failed due to privilege error. "
+                    "Retrying with unprivileged variant.",
+                    extra={"scan_id": str(scan_id), "stderr": artifact.stderr},
+                )
+                fallback_cmd = self.build_command(
+                    target, scan_profile, str(output_path), force_privileged=False
+                )
+                artifact = self.executor.run_scanner(
+                    scanner_type=ScannerType.NMAP,
+                    cmd_args=fallback_cmd,
+                    scan_id=scan_id,
+                    output_path=output_path,
+                    timeout=self.settings.scan_timeout,
+                )
+
             return artifact
         except Exception as e:
             logger.error(

@@ -44,7 +44,11 @@ class Settings(BaseSettings):
 
     # Scanner
     nmap_executable: str = "/usr/bin/nmap"
-    scan_timeout: int = 300
+    # Outer process deadline for a full-port scan.
+    # Formula: nmap --host-timeout 90m (5400 s) + 15 min executor buffer (900 s).
+    scan_timeout: int = 6300
+    # Scan mode for the FULL profile: auto | privileged | unprivileged
+    nmap_scan_mode: str = "auto"
     openvas_host: str = "localhost"
     openvas_port: int = 9390
     openvas_username: str = "admin"
@@ -68,6 +72,19 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_directory: str = "./logs"
+
+    @field_validator("nmap_scan_mode")
+    @classmethod
+    def validate_nmap_scan_mode(cls, value: str) -> str:
+        """Validate NMAP_SCAN_MODE is one of the accepted values."""
+        allowed = {"auto", "privileged", "unprivileged"}
+        lower = value.strip().lower()
+        if lower not in allowed:
+            allowed_str = ", ".join(sorted(allowed))
+            raise ValueError(
+                f"Invalid nmap_scan_mode: '{value}'. Allowed: {allowed_str}"
+            )
+        return lower
 
     @field_validator("log_level")
     @classmethod

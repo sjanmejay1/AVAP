@@ -35,8 +35,12 @@ def test_nmap_adapter_build_command():
 
     # Full profile
     cmd = adapter.build_command("example.com", ScanProfile.FULL, "out.xml")
-    assert "-sT" in cmd
     assert "-sV" in cmd
+    assert "-sC" in cmd
+    assert "-p-" in cmd
+    assert "-Pn" in cmd
+    assert "--host-timeout" in cmd
+    assert "90m" in cmd
     assert "-oX" in cmd
     assert "out.xml" in cmd
     assert cmd[-1] == "example.com"
