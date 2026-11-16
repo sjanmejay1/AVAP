@@ -53,24 +53,26 @@ class InventoryService:
         """Upsert an asset based on IPv4 address."""
         existing_asset = self.asset_repository.get_by_ip(host.ipv4)
 
+        # Truncate string fields to DB limits (Asset: hostname 253, OS 253)
+        hostname_val = host.hostname.strip()[:253] if host.hostname else None
+        os_val = host.operating_system.strip()[:253] if host.operating_system else None
+
         if existing_asset:
             # Update hostname if meaningful data is provided
-            if host.hostname and host.hostname.strip():
-                existing_asset.hostname = host.hostname.strip()
+            if hostname_val:
+                existing_asset.hostname = hostname_val
 
             # Update OS if meaningful data is provided
-            if host.operating_system and host.operating_system.strip():
-                existing_asset.operating_system = host.operating_system.strip()
+            if os_val:
+                existing_asset.operating_system = os_val
 
             self.session.flush()
             return existing_asset
         else:
             new_asset = Asset(
                 ipv4=host.ipv4,
-                hostname=host.hostname.strip() if host.hostname else None,
-                operating_system=host.operating_system.strip()
-                if host.operating_system
-                else None,
+                hostname=hostname_val,
+                operating_system=os_val,
             )
             self.asset_repository.create(new_asset)
             return new_asset
@@ -87,16 +89,37 @@ class InventoryService:
         )
         existing_service = self.session.execute(stmt).scalar_one_or_none()
 
+        svc_name = (
+            parsed_service.service_name[:50]
+            if parsed_service.service_name and parsed_service.service_name != "unknown"
+            else "unknown"
+        )
+        prod_val = (
+            parsed_service.product.strip()[:100]
+            if parsed_service.product and parsed_service.product.strip()
+            else None
+        )
+        ver_val = (
+            parsed_service.version.strip()[:50]
+            if parsed_service.version and parsed_service.version.strip()
+            else None
+        )
+        extra_val = (
+            parsed_service.extra_info.strip()[:4000]
+            if parsed_service.extra_info and parsed_service.extra_info.strip()
+            else None
+        )
+
         if existing_service:
             # Update service info if meaningful data is provided
-            if parsed_service.service_name and parsed_service.service_name != "unknown":
-                existing_service.service_name = parsed_service.service_name
-            if parsed_service.product and parsed_service.product.strip():
-                existing_service.product = parsed_service.product.strip()
-            if parsed_service.version and parsed_service.version.strip():
-                existing_service.version = parsed_service.version.strip()
-            if parsed_service.extra_info and parsed_service.extra_info.strip():
-                existing_service.extra_info = parsed_service.extra_info.strip()
+            if svc_name != "unknown":
+                existing_service.service_name = svc_name
+            if prod_val:
+                existing_service.product = prod_val
+            if ver_val:
+                existing_service.version = ver_val
+            if extra_val:
+                existing_service.extra_info = extra_val
 
             self.session.flush()
             return existing_service
@@ -104,17 +127,11 @@ class InventoryService:
             new_service = NetworkService(
                 asset_id=asset_id,
                 port=parsed_service.port,
-                protocol=parsed_service.protocol,
-                service_name=parsed_service.service_name,
-                product=parsed_service.product.strip()
-                if parsed_service.product
-                else None,
-                version=parsed_service.version.strip()
-                if parsed_service.version
-                else None,
-                extra_info=parsed_service.extra_info.strip()
-                if parsed_service.extra_info
-                else None,
+                protocol=parsed_service.protocol[:10],
+                service_name=svc_name,
+                product=prod_val,
+                version=ver_val,
+                extra_info=extra_val,
             )
             self.session.add(new_service)
             self.session.flush()

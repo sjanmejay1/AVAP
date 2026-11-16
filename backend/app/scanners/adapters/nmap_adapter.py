@@ -14,7 +14,9 @@ from app.scanners.scanner_executor import ScannerExecutor
 
 logger = logging.getLogger(__name__)
 
-# Markers in nmap stderr indicating a privilege/permission failure
+# Markers in nmap stderr indicating a privilege/permission failure.
+# When NET_RAW capability is missing (e.g. cap_drop: ALL in container),
+# Nmap cannot open raw network sockets and fails with one of these error strings.
 _PRIVILEGE_ERROR_MARKERS = [
     "requires root privileges",
     "operation not permitted",
@@ -23,6 +25,7 @@ _PRIVILEGE_ERROR_MARKERS = [
     "privilege",
     "dnet: failed to open",
     "pcap_open_live",
+    "permission denied",
 ]
 
 
@@ -97,6 +100,19 @@ def detect_privileged_mode(settings=None) -> bool:
         pass
 
     return False
+
+
+def _needs_privileged_flag() -> bool:
+    """Check if --privileged flag should be added.
+
+    Requirement: when mode is privileged and the process is non-root on Linux
+    (capabilities path), add --privileged to the privileged command. Do not add
+    it on Windows or when running as root.
+    """
+    if os.name == "nt":
+        return False
+    geteuid_fn = getattr(os, "geteuid", None)
+    return not (geteuid_fn is not None and geteuid_fn() == 0)
 
 
 def _is_privilege_error(stderr_output: str) -> bool:
@@ -179,7 +195,10 @@ class NmapAdapter(BaseScannerAdapter):
             )
 
             if is_priv:
-                args.extend(
+                priv_flags = []
+                if _needs_privileged_flag():
+                    priv_flags.append("--privileged")
+                priv_flags.extend(
                     [
                         "-sS",
                         "-sV",
@@ -200,6 +219,7 @@ class NmapAdapter(BaseScannerAdapter):
                         "30s",
                     ]
                 )
+                args.extend(priv_flags)
             else:
                 logger.warning(
                     "Executing FULL scan in unprivileged mode: "
@@ -269,13 +289,22 @@ class NmapAdapter(BaseScannerAdapter):
             target, scan_profile, str(output_path), force_privileged=is_privileged
         )
 
+        # Determine outer timeout based on scan profile:
+        # Full scans get extended timeout (90m host-timeout + 15m buffer = 6300s);
+        # other profiles retain the standard default timeout (300s).
+        exec_timeout = (
+            self.settings.full_scan_timeout
+            if scan_profile == ScanProfile.FULL
+            else self.settings.scan_timeout
+        )
+
         try:
             artifact = self.executor.run_scanner(
                 scanner_type=ScannerType.NMAP,
                 cmd_args=cmd_args,
                 scan_id=scan_id,
                 output_path=output_path,
-                timeout=self.settings.scan_timeout,
+                timeout=exec_timeout,
             )
 
             # Check if execution failed due to privilege/permission errors
@@ -298,7 +327,20 @@ class NmapAdapter(BaseScannerAdapter):
                     cmd_args=fallback_cmd,
                     scan_id=scan_id,
                     output_path=output_path,
-                    timeout=self.settings.scan_timeout,
+                    timeout=exec_timeout,
+                )
+
+            # If nmap returned non-zero (e.g. unprivileged fallback also failed,
+            # or cap_drop ALL prevented socket creation), emit a clear error log.
+            if artifact.exit_code != 0:
+                logger.error(
+                    "Nmap scanner execution failed with non-zero exit code: %s",
+                    artifact.exit_code,
+                    extra={
+                        "scan_id": str(scan_id),
+                        "exit_code": artifact.exit_code,
+                        "stderr": artifact.stderr,
+                    },
                 )
 
             return artifact

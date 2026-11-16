@@ -44,9 +44,11 @@ class Settings(BaseSettings):
 
     # Scanner
     nmap_executable: str = "/usr/bin/nmap"
-    # Outer process deadline for a full-port scan.
-    # Formula: nmap --host-timeout 90m (5400 s) + 15 min executor buffer (900 s).
-    scan_timeout: int = 6300
+    # Default outer process deadline for quick/discovery scans (seconds)
+    scan_timeout: int = 300
+    # Outer process deadline for FULL scans (seconds).
+    # Formula: nmap --host-timeout 90m (5400s) + 15m buffer (900s) = 6300s.
+    full_scan_timeout: int = 6300
     # Scan mode for the FULL profile: auto | privileged | unprivileged
     nmap_scan_mode: str = "auto"
     openvas_host: str = "localhost"
@@ -135,7 +137,7 @@ class Settings(BaseSettings):
         if self.database_url:
             return self.database_url
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 

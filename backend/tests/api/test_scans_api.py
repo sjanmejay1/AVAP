@@ -102,7 +102,7 @@ def wait_for_status(
         last_seen = response.json()["data"]["status"]
         if last_seen == expected:
             return
-        time.sleep(0.02)
+        time.sleep(0.1)
     raise AssertionError(
         f"scan {scan_id} never reached {expected!r} (last saw {last_seen!r})"
     )
@@ -254,6 +254,7 @@ def test_delete_scan_succeeds_when_not_running(
     # Let the background thread finish before touching db_session directly
     # from this thread — otherwise the two race on the same connection.
     wait_for_status(client, scan_id, "COMPLETED")
+    time.sleep(0.1)
 
     scan_job = db_session.get(ScanJob, uuid.UUID(scan_id))
     scan_job.status = ScanStatus.COMPLETED
