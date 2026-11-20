@@ -41,8 +41,6 @@ class ScannerExecutor:
         # Whitelist of allowed executables
         self._executable_whitelist = {
             ScannerType.NMAP: ["nmap", "nmap.exe"],
-            # OpenVAS is currently stubbed/handled via API, but if CLI is
-            # used, whitelist here.
         }
 
     def _validate_executable(
@@ -242,8 +240,10 @@ class ScannerExecutor:
                 extra={"scan_id": str(scan_id)},
             )
             status = ExecutionStatus.ERROR
+            # The message becomes the scan's client-visible failure_reason, so
+            # it stays generic; the underlying error is in the log above.
             raise ScannerExecutionException(
-                f"Scanner process execution failed: {e}"
+                "Scanner process execution failed."
             ) from e
 
         finally:

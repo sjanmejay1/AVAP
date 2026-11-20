@@ -27,7 +27,9 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "context"):
             log_obj["context"] = record.context
 
-        return json.dumps(log_obj)
+        # default=str: a non-JSON value in context (e.g. an exception object
+        # inside validation errors) must not turn into a logging failure.
+        return json.dumps(log_obj, default=str)
 
 
 def setup_logging() -> None:

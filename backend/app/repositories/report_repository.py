@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.report import Report
+from app.models.scan_job import ScanJob
 
 
 class ReportRepository:
@@ -19,20 +20,26 @@ class ReportRepository:
         self.session.flush()
         return report
 
-    def get_by_id(self, report_id: uuid.UUID) -> Report | None:
-        """Retrieve a report by its ID."""
-        stmt = select(Report).where(Report.id == report_id)
+    def get_owned(self, report_id: uuid.UUID, user_id: uuid.UUID) -> Report | None:
+        """Retrieve a report whose scan belongs to the user."""
+        stmt = (
+            select(Report)
+            .join(ScanJob, Report.scan_id == ScanJob.id)
+            .where(Report.id == report_id, ScanJob.user_id == user_id)
+        )
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_all(
         self,
+        user_id: uuid.UUID,
         skip: int = 0,
         limit: int = 50,
         scan_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Report], int]:
-        """Retrieve a paginated, optionally scan-filtered list of reports."""
-        stmt = select(Report)
-        count_stmt = select(func.count(Report.id))
+        """Retrieve the user's reports, optionally filtered to one scan."""
+        owned = Report.scan_id.in_(select(ScanJob.id).where(ScanJob.user_id == user_id))
+        stmt = select(Report).where(owned)
+        count_stmt = select(func.count(Report.id)).where(owned)
 
         if scan_id is not None:
             stmt = stmt.where(Report.scan_id == scan_id)

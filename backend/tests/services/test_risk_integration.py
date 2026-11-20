@@ -22,17 +22,27 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 def test_module05_findings_flow_into_module06_risk_and_api(
     client: TestClient, db_session
 ):
     # --- Module 05: persist an assessment package via InventoryService ---
-    target = Target(target="203.0.113.5", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.5",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -66,7 +76,7 @@ def test_module05_findings_flow_into_module06_risk_and_api(
     host = ParsedHost(ipv4="203.0.113.5", services=[service_a, service_b])
 
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -90,10 +100,8 @@ def test_module05_findings_flow_into_module06_risk_and_api(
     assert scan_response.status_code == 200
     assert scan_response.json()["data"]["risk_score"] == 9.8
 
-    summary_response = client.get("/api/v1/risk/summary")
-    assert summary_response.status_code == 200
-    assert summary_response.json()["data"]["risk_score"] == 9.8
-
-    list_response = client.get("/api/v1/risk?scope=VULNERABILITY")
+    list_response = client.get(
+        f"/api/v1/risk?scan_id={scan_job.id}&scope=VULNERABILITY"
+    )
     assert list_response.status_code == 200
     assert list_response.json()["data"]["total"] == 2

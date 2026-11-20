@@ -25,7 +25,9 @@ def test_create_app_wires_cors_allowed_origins_from_settings(monkeypatch):
         "https://app.example.com",
         "https://staging.example.com",
     ]
-    assert kwargs["allow_credentials"] is False
+    # Credentials are required for the httpOnly refresh cookie; safe only
+    # because the origin list is explicit (asserted above).
+    assert kwargs["allow_credentials"] is True
 
 
 def test_create_app_default_cors_allows_local_frontend_dev_origin(monkeypatch):

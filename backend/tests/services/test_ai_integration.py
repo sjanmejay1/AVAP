@@ -29,6 +29,7 @@ from app.services.ai_service import AIService
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 class _FakeProviderBoundaryManager(AIManager):
@@ -62,11 +63,20 @@ class _FakeProviderBoundaryManager(AIManager):
 
 def test_module05_through_module07_end_to_end(client: TestClient, db_session):
     # --- Module 05: persist an assessment package via InventoryService ---
-    target = Target(target="203.0.113.9", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.9",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -95,7 +105,7 @@ def test_module05_through_module07_end_to_end(client: TestClient, db_session):
     )
     host = ParsedHost(ipv4="203.0.113.9", services=[service])
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -128,7 +138,9 @@ def test_module05_through_module07_end_to_end(client: TestClient, db_session):
         audit_service=audit_service,
         ai_manager=fake_manager,
     )
-    recommendation = ai_service.generate_recommendation(risk_assessment.id)
+    recommendation = ai_service.generate_recommendation(
+        TEST_USER_ID, risk_assessment.id
+    )
 
     assert recommendation.risk_assessment_id == risk_assessment.id
     assert recommendation.summary == "Upgrade the vulnerable OpenSSH service."

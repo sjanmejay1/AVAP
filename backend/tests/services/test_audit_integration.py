@@ -10,11 +10,13 @@ of the audit subsystem is mocked.
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.ai.manager import AIManager
 from app.ai.provider import AIProviderResponse
 from app.core.config import Settings
 from app.core.enums import RiskScope
+from app.models.audit_event import AuditEvent
 from app.repositories.ai_recommendation_repository import AIRecommendationRepository
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.audit_repository import AuditRepository
@@ -28,6 +30,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.report_service import ReportService
+from tests.auth_helpers import TEST_USER_ID
 
 
 class _FakeProviderBoundaryManager(AIManager):
@@ -50,6 +53,26 @@ class _FakeProviderBoundaryManager(AIManager):
         )
 
 
+def _audit_trail(db_session) -> list[dict]:
+    """Every audit event, newest first, as JSON-safe dicts."""
+    stmt = select(AuditEvent).order_by(
+        AuditEvent.occurred_at.desc(), AuditEvent.id.desc()
+    )
+    return [
+        {
+            "event_type": e.event_type.value,
+            "outcome": e.outcome.value,
+            "actor_type": e.actor_type.value,
+            "actor_id": e.actor_id,
+            "resource_id": str(e.resource_id) if e.resource_id else None,
+            "scan_id": str(e.scan_id) if e.scan_id else None,
+            "occurred_at": e.occurred_at.isoformat(),
+            "event_metadata": e.event_metadata,
+        }
+        for e in db_session.execute(stmt).scalars().all()
+    ]
+
+
 def test_full_lifecycle_produces_expected_audit_trail(
     client: TestClient, db_session, tmp_path
 ):
@@ -59,8 +82,8 @@ def test_full_lifecycle_produces_expected_audit_trail(
     target_id = target_response.json()["data"]["id"]
 
     # --- Module 02: create a scan through the real API ---
-    # No scanner engine is wired for this test environment (no real Nmap/
-    # OpenVAS binaries available); override with scanner_engine=None so the
+    # No scanner engine is wired for this test environment (no real Nmap
+    # binary available); override with scanner_engine=None so the
     # scan is created and stays PENDING without dispatching a real process,
     # matching this suite's existing convention for scan API tests.
     from app.api.routes.v1.scans import get_scan_service
@@ -113,7 +136,7 @@ def test_full_lifecycle_produces_expected_audit_trail(
     )
     host = ParsedHost(ipv4="203.0.113.150", services=[service])
     package = AssessmentPackage(
-        scan_id=scan_id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -178,9 +201,9 @@ def test_full_lifecycle_produces_expected_audit_trail(
     finally:
         app.dependency_overrides.pop(get_report_service, None)
 
-    # --- Module 10: verify the resulting audit trail via the real API ---
-    all_events_response = client.get("/api/v1/audit", params={"limit": 50})
-    all_events = all_events_response.json()["data"]["events"]
+    # --- Module 10: verify the resulting audit trail (append-only table;
+    # there is no audit read API) ---
+    all_events = _audit_trail(db_session)
 
     event_types = [e["event_type"] for e in all_events]
     assert "TARGET_CREATED" in event_types
@@ -205,12 +228,12 @@ def test_full_lifecycle_produces_expected_audit_trail(
     report_event = next(e for e in all_events if e["event_type"] == "REPORT_GENERATED")
     assert report_event["resource_id"] == report_id
 
-    # Actor semantics: HTTP-triggered actions resolve to ANONYMOUS.
+    # Actor semantics: HTTP-triggered actions record the authenticated user.
     target_created_event = next(
         e for e in all_events if e["event_type"] == "TARGET_CREATED"
     )
-    assert target_created_event["actor_type"] == "ANONYMOUS"
-    assert target_created_event["actor_id"] is None
+    assert target_created_event["actor_type"] == "USER"
+    assert target_created_event["actor_id"] == str(TEST_USER_ID)
 
     # --- No forbidden content anywhere in the audit trail ---
     import json

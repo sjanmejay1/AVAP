@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import RiskLevel, RiskScope
 from app.models.risk_assessment import RiskAssessment
+from app.models.scan_job import ScanJob
 
 
 class RiskRepository:
@@ -19,6 +20,17 @@ class RiskRepository:
     def get_by_id(self, risk_id: uuid.UUID) -> RiskAssessment | None:
         """Retrieve a risk assessment by its ID."""
         stmt = select(RiskAssessment).where(RiskAssessment.id == risk_id)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def get_owned(
+        self, risk_id: uuid.UUID, user_id: uuid.UUID
+    ) -> RiskAssessment | None:
+        """Retrieve a scan-linked risk assessment owned by the user."""
+        stmt = (
+            select(RiskAssessment)
+            .join(ScanJob, RiskAssessment.scan_id == ScanJob.id)
+            .where(RiskAssessment.id == risk_id, ScanJob.user_id == user_id)
+        )
         return self.session.execute(stmt).scalar_one_or_none()
 
     def find_scope_record(
@@ -149,13 +161,6 @@ class RiskRepository:
         stmt = select(RiskAssessment).where(
             RiskAssessment.scope == RiskScope.SCAN,
             RiskAssessment.scan_id == scan_id,
-        )
-        return self.session.execute(stmt).scalar_one_or_none()
-
-    def get_assessment(self) -> RiskAssessment | None:
-        """Retrieve the singleton ASSESSMENT-scope overall risk record."""
-        stmt = select(RiskAssessment).where(
-            RiskAssessment.scope == RiskScope.ASSESSMENT
         )
         return self.session.execute(stmt).scalar_one_or_none()
 

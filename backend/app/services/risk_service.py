@@ -53,7 +53,10 @@ class RiskService:
         self.audit_service = audit_service
 
     def calculate_risk_for_scan(
-        self, scan_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        scan_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
+        owner_id: uuid.UUID | None = None,
     ) -> RiskAssessment:
         """Calculate and persist deterministic risk for one scan.
 
@@ -61,9 +64,16 @@ class RiskService:
         within a single atomic transaction. Safe to call repeatedly: identical
         inputs produce identical persisted results, and each scope/entity
         combination is updated in place rather than duplicated.
+
+        `owner_id` is set for user-triggered recalculation: the scan must then
+        belong to that user. The background pipeline passes None.
         """
         context = audit_context or AuditContext.system()
-        scan_job = self.scan_repository.get_by_id(scan_id)
+        scan_job = (
+            self.scan_repository.get_owned(scan_id, owner_id)
+            if owner_id is not None
+            else self.scan_repository.get_by_id(scan_id)
+        )
         if not scan_job:
             raise NotFoundException(f"Scan job with ID {scan_id} not found.")
 
@@ -180,29 +190,34 @@ class RiskService:
 
     def get_risk_assessments(
         self,
+        user_id: uuid.UUID,
+        scan_id: uuid.UUID,
         skip: int = 0,
         limit: int = 50,
         scope: RiskScope | None = None,
         risk_level: RiskLevel | None = None,
-        scan_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[RiskAssessment], int]:
-        """Retrieve a paginated, filtered list of risk assessments."""
+        """Retrieve a paginated, filtered list of one owned scan's assessments."""
+        if not self.scan_repository.get_owned(scan_id, user_id):
+            raise NotFoundException(f"Scan job with ID {scan_id} not found.")
         return self.risk_repository.get_all(
             skip=skip, limit=limit, scope=scope, risk_level=risk_level, scan_id=scan_id
         )
 
     def get_risk_by_asset(
-        self, asset_id: uuid.UUID, skip: int = 0, limit: int = 50
+        self, user_id: uuid.UUID, asset_id: uuid.UUID, skip: int = 0, limit: int = 50
     ) -> tuple[Sequence[RiskAssessment], int]:
-        """Retrieve the paginated ASSET-scope risk history for one asset."""
-        asset = self.asset_repository.get_by_id(asset_id)
+        """Retrieve the paginated ASSET-scope risk history for one owned asset."""
+        asset = self.asset_repository.get_owned(asset_id, user_id)
         if not asset:
             raise NotFoundException(f"Asset with ID {asset_id} not found.")
         return self.risk_repository.get_by_asset(asset_id, skip=skip, limit=limit)
 
-    def get_risk_by_scan(self, scan_id: uuid.UUID) -> RiskAssessment:
-        """Retrieve the SCAN-scope risk assessment for one scan."""
-        scan_job = self.scan_repository.get_by_id(scan_id)
+    def get_risk_by_scan(
+        self, user_id: uuid.UUID, scan_id: uuid.UUID
+    ) -> RiskAssessment:
+        """Retrieve the SCAN-scope risk assessment for one owned scan."""
+        scan_job = self.scan_repository.get_owned(scan_id, user_id)
         if not scan_job:
             raise NotFoundException(f"Scan job with ID {scan_id} not found.")
 
@@ -213,9 +228,3 @@ class RiskService:
             )
         return risk
 
-    def get_summary(self) -> RiskAssessment:
-        """Retrieve the overall assessment-level risk summary."""
-        summary = self.risk_repository.get_assessment()
-        if not summary:
-            raise NotFoundException("No risk assessment has been calculated yet.")
-        return summary

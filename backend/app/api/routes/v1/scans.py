@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.audit import get_audit_context, get_audit_service
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
+from app.models.user import User
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.target_repository import TargetRepository
 from app.scanners.scanner_manager import ScannerManager
@@ -45,10 +47,13 @@ def get_scan_service(
 def create_scan(
     request: CreateScanRequest,
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Create a new scan job for a validated target."""
-    scan_job = service.create_scan(request, audit_context=audit_context)
+    scan_job = service.create_scan(
+        current_user.id, request, audit_context=audit_context
+    )
     return {"data": ScanResponse.model_validate(scan_job)}
 
 
@@ -64,10 +69,13 @@ def list_scans(
         None, description="Filter to scans of this target"
     ),
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve a paginated list of all scan jobs."""
-    scans = service.get_all_scans(skip=skip, limit=limit, target_id=target_id)
-    total = service.count_scans(target_id=target_id)
+    scans = service.get_all_scans(
+        current_user.id, skip=skip, limit=limit, target_id=target_id
+    )
+    total = service.count_scans(current_user.id, target_id=target_id)
     scan_responses = [ScanResponse.model_validate(s) for s in scans]
     return {"data": ScanListResponse(scans=scan_responses, total=total)}
 
@@ -80,9 +88,10 @@ def list_scans(
 def get_scan(
     scan_id: uuid.UUID,
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve details of a specific scan job by its ID."""
-    scan_job = service.get_scan(scan_id)
+    scan_job = service.get_scan(scan_id, current_user.id)
     return {"data": ScanResponse.model_validate(scan_job)}
 
 
@@ -94,9 +103,10 @@ def get_scan(
 def get_scan_status(
     scan_id: uuid.UUID,
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve the current execution status of a scan job."""
-    scan_job = service.get_scan(scan_id)
+    scan_job = service.get_scan(scan_id, current_user.id)
     status_response = ScanStatusResponse(
         scan_id=scan_job.id,
         status=scan_job.status,
@@ -113,6 +123,7 @@ def get_scan_status(
 def cancel_scan(
     scan_id: uuid.UUID,
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Request cancellation of a currently running scan job.
@@ -121,7 +132,9 @@ def cancel_scan(
     background execution thread notices the request; poll
     GET /scans/{scan_id}/status for the updated state.
     """
-    scan_job = service.cancel_scan(scan_id, audit_context=audit_context)
+    scan_job = service.cancel_scan(
+        current_user.id, scan_id, audit_context=audit_context
+    )
     return {"data": ScanResponse.model_validate(scan_job)}
 
 
@@ -133,7 +146,8 @@ def cancel_scan(
 def delete_scan(
     scan_id: uuid.UUID,
     service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> None:
     """Delete a scan job."""
-    service.delete_scan(scan_id, audit_context=audit_context)
+    service.delete_scan(current_user.id, scan_id, audit_context=audit_context)

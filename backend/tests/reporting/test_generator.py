@@ -28,6 +28,7 @@ from app.services.ai_service import AIService
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 class _FakeAIManager(AIManager):
@@ -77,11 +78,16 @@ def _seed_scan(
 ):
     repos = _Repos(db_session)
 
-    target = Target(target=ipv4, target_type=TargetType.IPV4)
+    target = Target(user_id=TEST_USER_ID, target=ipv4, target_type=TargetType.IPV4)
     db_session.add(target)
     db_session.flush()
 
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -110,7 +116,7 @@ def _seed_scan(
         services=[parsed_service],
     )
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -138,7 +144,7 @@ def _seed_scan(
             ai_manager=_FakeAIManager(),
         )
         for risk in vulnerability_risks:
-            ai_service.generate_recommendation(risk.id)
+            ai_service.generate_recommendation(TEST_USER_ID, risk.id)
 
     return scan_job, repos
 
@@ -237,10 +243,15 @@ def test_build_report_data_requires_scan_risk(db_session):
     """No VULNERABILITY-scope risk for a finding means it is excluded, and if
     that leaves zero reportable findings, generation must fail explicitly.
     """
-    target = Target(target="203.0.113.20", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.20",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(scan_job)

@@ -10,8 +10,8 @@ Stack
 
 Backend (backend/): Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL, Pydantic v2, ReportLab, pytest (SQLite in-memory).
 Frontend (frontend/): Next.js App Router, TypeScript, TanStack Query, Zustand, shadcn/ui + Tailwind, React Hook Form + Zod, Vitest.
-Scanners: Nmap (live). OpenVAS adapter is a deliberate stub — writes a canned XML fixture, makes no network call.
-AI: OpenRouter is the only built adapter. Groq/Gemini/HuggingFace are contract-ready config stubs with no adapter code.
+Scanners: Nmap only (OpenVAS stub removed 2026-11-20).
+AI: OpenRouter adapter today; being replaced by a Hugging Face adapter using each user's own encrypted key (audit/final-goal-plan.md, Phase C).
 
 
 Commands
@@ -24,7 +24,7 @@ Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · np
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
 
 
-Quality bar to match: 592 backend tests + 163 frontend tests passing, 0 lint/type/security findings (last hardening pass, 2026-07-19).
+Quality bar to match: 580 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (Phase A, 2026-11-20). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 
@@ -69,14 +69,18 @@ Off-limits / out of scope
 Do not add, even if it seems natural:
 
 
-Authentication, RBAC, multi-user, multi-tenancy
+RBAC, roles, admin users, multi-tenancy/organizations
 CI-CD pipelines, distributed/orchestrated deployment
 Message queues, scheduling, distributed scanners
 Configurable sort order
 New libraries or state-management patterns without asking
 
-(Single-host Docker Compose was delivered on owner request 2026-07-20 — see
-deployment.md; the broader deferrals above still stand.)
+(Single-host Docker Compose was delivered on owner request 2026-07-20.
+Authentication (JWT + rotating refresh cookie), open registration and
+per-user ownership of all data were delivered on owner request 2026-11-20 —
+see audit/final-goal-plan.md. Every user-facing query must be scoped to the
+current user; another user's resource returns 404. The broader deferrals
+above still stand.)
 
 
 These are deliberate deferrals documented in project.md, not gaps. Current architecture must not prevent them later, but must not implement them now.

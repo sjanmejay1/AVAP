@@ -26,6 +26,12 @@ class ScanJob(Base, TimestampMixin):
         ForeignKey("targets.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
+    # Denormalized from the target so ownership checks and the background
+    # worker (which needs the owner's AI key) don't require a join.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus), nullable=False, default=ScanStatus.PENDING
     )

@@ -1,6 +1,7 @@
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, String
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, TimestampMixin
@@ -14,9 +15,11 @@ class Asset(Base, TimestampMixin):
 
     __tablename__ = "assets"
 
-    # Unique inventory identity: IPv4 address
-    ipv4: Mapped[str] = mapped_column(
-        String(45), unique=True, index=True, nullable=False
+    # Inventory identity: IPv4 address, unique per owning user
+    ipv4: Mapped[str] = mapped_column(String(45), index=True, nullable=False)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     # Optional hostname
@@ -33,4 +36,7 @@ class Asset(Base, TimestampMixin):
         lazy="selectin",
     )
 
-    __table_args__ = (Index("ix_assets_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_assets_created_at", "created_at"),
+        UniqueConstraint("user_id", "ipv4", name="uq_assets_user_ipv4"),
+    )

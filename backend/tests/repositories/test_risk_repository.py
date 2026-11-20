@@ -9,11 +9,12 @@ from app.models.risk_assessment import RiskAssessment
 from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.repositories.risk_repository import RiskRepository
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def target(db_session):
-    t = Target(target="10.10.10.1", target_type=TargetType.IPV4)
+    t = Target(user_id=TEST_USER_ID, target="10.10.10.1", target_type=TargetType.IPV4)
     db_session.add(t)
     db_session.flush()
     return t
@@ -21,7 +22,12 @@ def target(db_session):
 
 @pytest.fixture
 def scan_job(db_session, target):
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -29,7 +35,7 @@ def scan_job(db_session, target):
 
 @pytest.fixture
 def asset(db_session):
-    a = Asset(ipv4="10.10.10.1")
+    a = Asset(user_id=TEST_USER_ID, ipv4="10.10.10.1")
     db_session.add(a)
     db_session.flush()
     return a
@@ -248,10 +254,6 @@ def test_get_by_scan_returns_singleton(risk_repository, scan_job):
 
 def test_get_by_scan_returns_none_when_not_calculated(risk_repository, scan_job):
     assert risk_repository.get_by_scan(scan_job.id) is None
-
-
-def test_get_assessment_returns_none_when_absent(risk_repository):
-    assert risk_repository.get_assessment() is None
 
 
 def test_get_all_scan_scores(risk_repository, scan_job):

@@ -6,6 +6,7 @@ from app.audit.metadata_policy import (
     validate_metadata,
 )
 from app.core.exceptions import UnsafeAuditMetadataException
+from tests.auth_helpers import TEST_USER_ID
 
 
 def test_none_normalizes_to_empty_dict():
@@ -25,7 +26,7 @@ def test_safe_scalar_metadata_accepted():
 
 
 def test_one_level_nested_dict_accepted():
-    metadata = {"context": {"scanner_type": "OPENVAS"}}
+    metadata = {"context": {"scanner_type": "NMAP"}}
     assert validate_metadata(metadata) == metadata
 
 
@@ -103,7 +104,7 @@ def test_unsupported_value_type_rejected():
 def test_orm_object_rejected():
     from app.models.target import Target
 
-    target = Target(target="10.0.0.1", target_type="IPV4")
+    target = Target(user_id=TEST_USER_ID, target="10.0.0.1", target_type="IPV4")
     with pytest.raises(UnsafeAuditMetadataException):
         validate_metadata({"target": target})
 

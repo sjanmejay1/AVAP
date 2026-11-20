@@ -17,6 +17,7 @@ from app.scanners.interfaces import IScannerEngine
 from app.schemas.scan import CreateScanRequest
 from app.services.audit_service import AuditService
 from app.services.scan_service import ScanService
+from tests.auth_helpers import TEST_USER_ID
 
 
 class _NoOpAIManager(AIManager):
@@ -126,13 +127,17 @@ def target_repo(db_session):
 
 @pytest.fixture
 def test_target(target_repo):
-    target = Target(target="10.0.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.0.0.1",
+        target_type=TargetType.IPV4,
+    )
     return target_repo.create(target)
 
 
 def test_create_scan_success(scan_service, test_target):
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    scan_job = scan_service.create_scan(request)
+    scan_job = scan_service.create_scan(TEST_USER_ID, request)
 
     assert scan_job.id is not None
     assert scan_job.target_id == test_target.id
@@ -155,7 +160,7 @@ def test_create_scan_success(scan_service, test_target):
 def test_create_scan_target_not_found(scan_service):
     request = CreateScanRequest(target_id=uuid.uuid4(), scan_profile="full")
     with pytest.raises(NotFoundException):
-        scan_service.create_scan(request)
+        scan_service.create_scan(TEST_USER_ID, request)
 
 
 def test_create_scan_already_running(db_session, test_target):
@@ -175,11 +180,11 @@ def test_create_scan_already_running(db_session, test_target):
         ai_manager=_NoOpAIManager(),
     )
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    scan_service.create_scan(request)
+    scan_service.create_scan(TEST_USER_ID, request)
     assert blocking_engine.dispatch_started_event.wait(timeout=5)
 
     with pytest.raises(ConflictException):
-        scan_service.create_scan(request)
+        scan_service.create_scan(TEST_USER_ID, request)
 
     blocking_engine.release_event.set()
     assert scan_service.last_scan_thread is not None
@@ -188,7 +193,7 @@ def test_create_scan_already_running(db_session, test_target):
 
 def test_get_scan(scan_service, test_target):
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    created_scan = scan_service.create_scan(request)
+    created_scan = scan_service.create_scan(TEST_USER_ID, request)
 
     # Join before touching the shared session again from this thread: the
     # background thread uses the same db_session, which isn't safe for
@@ -196,13 +201,13 @@ def test_get_scan(scan_service, test_target):
     assert scan_service.last_scan_thread is not None
     scan_service.last_scan_thread.join(timeout=5)
 
-    retrieved_scan = scan_service.get_scan(created_scan.id)
+    retrieved_scan = scan_service.get_scan(created_scan.id, TEST_USER_ID)
     assert retrieved_scan.id == created_scan.id
 
 
 def test_get_scan_not_found(scan_service):
     with pytest.raises(NotFoundException):
-        scan_service.get_scan(uuid.uuid4())
+        scan_service.get_scan(uuid.uuid4(), TEST_USER_ID)
 
 
 def test_delete_scan(scan_service, test_target):
@@ -214,12 +219,12 @@ def test_delete_scan(scan_service, test_target):
         scanner_engine=None,
     )
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    created_scan = scan_service_no_engine.create_scan(request)
+    created_scan = scan_service_no_engine.create_scan(TEST_USER_ID, request)
 
-    scan_service_no_engine.delete_scan(created_scan.id)
+    scan_service_no_engine.delete_scan(TEST_USER_ID, created_scan.id)
 
     with pytest.raises(NotFoundException):
-        scan_service_no_engine.get_scan(created_scan.id)
+        scan_service_no_engine.get_scan(created_scan.id, TEST_USER_ID)
 
 
 def test_delete_running_scan_fails(db_session, test_target):
@@ -236,12 +241,12 @@ def test_delete_running_scan_fails(db_session, test_target):
         ai_manager=_NoOpAIManager(),
     )
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    created_scan = scan_service.create_scan(request)
+    created_scan = scan_service.create_scan(TEST_USER_ID, request)
 
     assert blocking_engine.dispatch_started_event.wait(timeout=5)
 
     with pytest.raises(ConflictException):
-        scan_service.delete_scan(created_scan.id)
+        scan_service.delete_scan(TEST_USER_ID, created_scan.id)
 
     blocking_engine.release_event.set()
     assert scan_service.last_scan_thread is not None
@@ -274,7 +279,7 @@ def test_create_scan_marks_failed_on_parser_error(db_session, test_target):
         ai_manager=_NoOpAIManager(),
     )
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    created_scan = scan_service.create_scan(request)
+    created_scan = scan_service.create_scan(TEST_USER_ID, request)
 
     assert scan_service.last_scan_thread is not None
     scan_service.last_scan_thread.join(timeout=5)
@@ -294,7 +299,7 @@ def test_create_scan_success_auto_calculates_risk(
     from app.models.risk_assessment import RiskAssessment
 
     request = CreateScanRequest(target_id=test_target.id, scan_profile="full")
-    scan_job = scan_service.create_scan(request)
+    scan_job = scan_service.create_scan(TEST_USER_ID, request)
     assert scan_service.last_scan_thread is not None
     scan_service.last_scan_thread.join(timeout=5)
     db_session.refresh(scan_job)
@@ -313,8 +318,16 @@ def test_get_all_scans_filters_by_target_id(db_session, target_repo):
     """A target's own scans must be retrievable in isolation from other
     targets' scans — this is what lets the Target detail page list only
     that target's scan history."""
-    target_a = Target(target="10.5.0.1", target_type=TargetType.IPV4)
-    target_b = Target(target="10.5.0.2", target_type=TargetType.IPV4)
+    target_a = Target(
+        user_id=TEST_USER_ID,
+        target="10.5.0.1",
+        target_type=TargetType.IPV4,
+    )
+    target_b = Target(
+        user_id=TEST_USER_ID,
+        target="10.5.0.2",
+        target_type=TargetType.IPV4,
+    )
     target_repo.create(target_a)
     target_repo.create(target_b)
 
@@ -323,16 +336,23 @@ def test_get_all_scans_filters_by_target_id(db_session, target_repo):
 
     scan_repo.create(
         ScanJob(
+            user_id=TEST_USER_ID,
             target_id=target_a.id, scan_type="full", status=ScanStatus.COMPLETED
         )
     )
     scan_repo.create(
         ScanJob(
+            user_id=TEST_USER_ID,
             target_id=target_b.id, scan_type="full", status=ScanStatus.COMPLETED
         )
     )
     scan_repo.create(
-        ScanJob(target_id=target_a.id, scan_type="full", status=ScanStatus.FAILED)
+        ScanJob(
+            user_id=TEST_USER_ID,
+            target_id=target_a.id,
+            scan_type="full",
+            status=ScanStatus.FAILED,
+        )
     )
 
     service = ScanService(
@@ -341,8 +361,8 @@ def test_get_all_scans_filters_by_target_id(db_session, target_repo):
         AuditService(AuditRepository(db_session)),
     )
 
-    scans = service.get_all_scans(target_id=target_a.id)
-    total = service.count_scans(target_id=target_a.id)
+    scans = service.get_all_scans(TEST_USER_ID, target_id=target_a.id)
+    total = service.count_scans(TEST_USER_ID, target_id=target_a.id)
 
     assert total == 2
     assert {s.target_id for s in scans} == {target_a.id}

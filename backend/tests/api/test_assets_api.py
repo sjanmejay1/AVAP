@@ -6,17 +6,20 @@ from sqlalchemy import select
 
 from app.models.asset import Asset
 from app.models.service import NetworkService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def sample_data(db_session):
     """Create two assets with services for testing."""
     asset1 = Asset(
+        user_id=TEST_USER_ID,
         ipv4="192.168.1.10",
         hostname="web-server.local",
         operating_system="Linux Ubuntu",
     )
     asset2 = Asset(
+        user_id=TEST_USER_ID,
         ipv4="192.168.1.20", hostname="db-server.local", operating_system="Linux Debian"
     )
     db_session.add_all([asset1, asset2])

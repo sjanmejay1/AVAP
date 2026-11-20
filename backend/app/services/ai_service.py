@@ -88,10 +88,10 @@ class AIService:
         self.ai_manager = ai_manager or AIManager()
 
     def _get_vulnerability_risk_assessment(
-        self, risk_assessment_id: uuid.UUID
+        self, risk_assessment_id: uuid.UUID, user_id: uuid.UUID
     ) -> RiskAssessment:
-        """Fetch and validate the risk assessment required for generation."""
-        risk_assessment = self.risk_repository.get_by_id(risk_assessment_id)
+        """Fetch and validate the user's risk assessment required for generation."""
+        risk_assessment = self.risk_repository.get_owned(risk_assessment_id, user_id)
         if not risk_assessment:
             raise NotFoundException(f"Risk assessment {risk_assessment_id} not found.")
 
@@ -103,6 +103,7 @@ class AIService:
 
     def generate_recommendation(
         self,
+        user_id: uuid.UUID,
         risk_assessment_id: uuid.UUID,
         audit_context: AuditContext | None = None,
     ) -> AIRecommendation:
@@ -116,7 +117,9 @@ class AIService:
         identity in place.
         """
         context = audit_context or AuditContext.system()
-        risk_assessment = self._get_vulnerability_risk_assessment(risk_assessment_id)
+        risk_assessment = self._get_vulnerability_risk_assessment(
+            risk_assessment_id, user_id
+        )
         if risk_assessment.vulnerability_id is None:
             raise InternalException(
                 "VULNERABILITY-scoped risk assessment unexpectedly has no "
@@ -271,8 +274,13 @@ class AIService:
         self.session.refresh(record)
         return record
 
-    def get_recommendation(self, risk_assessment_id: uuid.UUID) -> AIRecommendation:
-        """Retrieve the persisted recommendation for a risk assessment."""
+    def get_recommendation(
+        self, user_id: uuid.UUID, risk_assessment_id: uuid.UUID
+    ) -> AIRecommendation:
+        """Retrieve the persisted recommendation for one of the user's risk
+        assessments."""
+        if not self.risk_repository.get_owned(risk_assessment_id, user_id):
+            raise NotFoundException(f"Risk assessment {risk_assessment_id} not found.")
         recommendation = self.ai_recommendation_repository.get_by_risk_assessment(
             risk_assessment_id
         )

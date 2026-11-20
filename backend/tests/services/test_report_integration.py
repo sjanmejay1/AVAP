@@ -33,6 +33,7 @@ from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.report_service import ReportService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 class _FakeProviderBoundaryManager(AIManager):
@@ -63,11 +64,20 @@ class _FakeProviderBoundaryManager(AIManager):
 
 def test_module05_through_module08_end_to_end(client: TestClient, db_session, tmp_path):
     # --- Module 05: persist an assessment package via InventoryService ---
-    target = Target(target="203.0.113.60", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.60",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -97,7 +107,7 @@ def test_module05_through_module08_end_to_end(client: TestClient, db_session, tm
         ipv4="203.0.113.60", hostname="integration-host", services=[service]
     )
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -127,7 +137,7 @@ def test_module05_through_module08_end_to_end(client: TestClient, db_session, tm
         audit_service=audit_service,
         ai_manager=_FakeProviderBoundaryManager(),
     )
-    ai_service.generate_recommendation(vulnerability_risk.id)
+    ai_service.generate_recommendation(TEST_USER_ID, vulnerability_risk.id)
 
     # --- Module 08: generate the report through the real REST API ---
     from app.api.routes.v1.reports import get_report_service

@@ -8,6 +8,7 @@ reaches a ReportLab `Paragraph`, which otherwise interprets a small
 XML-like markup language in its input.
 """
 
+import re
 from xml.sax.saxutils import (
     escape,  # nosec B406 -- output-escaping only, never parses XML
 )
@@ -38,14 +39,33 @@ _GRID_COLOR = colors.HexColor("#D5D8DC")
 _MUTED_TEXT = colors.HexColor("#566573")
 
 
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
 def safe_text(value: str | None) -> str:
     """Escape untrusted text so it can never be interpreted as ReportLab
     Paragraph markup. Every piece of scanner- or AI-derived text must pass
     through this function before being placed inside a Paragraph.
+
+    Strips XML-illegal ASCII control characters, then escapes &, <, > plus
+    double and single quotes in one pass (no double escaping). Length
+    bounding is the caller's job and happens before this call (see
+    `generator._bounded_text`), so a cut can never split an entity.
     """
     if not value:
         return ""
-    return escape(str(value))
+    text = _CONTROL_CHARS_RE.sub("", str(value))
+    return escape(text, {'"': "&quot;", "'": "&#39;"})
+
+
+def table_cell(text: str | None, styles: dict) -> Paragraph:
+    """A safely escaped table cell.
+
+    Plain strings in a ReportLab Table are drawn verbatim, so escaped text
+    would show literal entities such as "&amp;". Wrapping the escaped text
+    in a Paragraph renders it correctly and lets long values wrap.
+    """
+    return Paragraph(safe_text(text), styles["Meta"])
 
 
 def risk_level_color(level: RiskLevel):

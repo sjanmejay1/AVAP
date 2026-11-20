@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.ai.manager import AIManager
 from app.api.dependencies.audit import get_audit_context, get_audit_service
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
+from app.models.user import User
 from app.repositories.ai_recommendation_repository import AIRecommendationRepository
 from app.repositories.network_service_repository import NetworkServiceRepository
 from app.repositories.risk_repository import RiskRepository
@@ -46,10 +48,11 @@ def get_ai_service(
 def get_recommendation(
     assessment_id: uuid.UUID,
     service: AIService = Depends(get_ai_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve the persisted AI remediation recommendation for a
     vulnerability-scoped risk assessment, without triggering generation."""
-    recommendation = service.get_recommendation(assessment_id)
+    recommendation = service.get_recommendation(current_user.id, assessment_id)
     return {"data": AIRecommendationResponse.model_validate(recommendation)}
 
 
@@ -61,6 +64,7 @@ def get_recommendation(
 def generate_recommendation(
     assessment_id: uuid.UUID,
     service: AIService = Depends(get_ai_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Generate an AI remediation recommendation for a vulnerability-scoped
@@ -68,7 +72,7 @@ def generate_recommendation(
     reused as long as the risk assessment has not been recalculated since.
     """
     recommendation = service.generate_recommendation(
-        assessment_id, audit_context=audit_context
+        current_user.id, assessment_id, audit_context=audit_context
     )
     return {"data": AIRecommendationResponse.model_validate(recommendation)}
 

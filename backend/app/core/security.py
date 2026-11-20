@@ -44,6 +44,20 @@ def is_valid_ipv4_cidr(cidr_str: str) -> bool:
         return False
 
 
+def cidr_exceeds_scope(cidr_str: str, min_prefix_length: int) -> bool:
+    """Return True if a valid IPv4 CIDR is broader than the allowed prefix.
+
+    Args:
+        cidr_str: An IPv4 CIDR string already accepted by is_valid_ipv4_cidr.
+        min_prefix_length: The smallest prefix length (largest range) allowed.
+
+    Returns:
+        True when the network's prefix length is below the minimum.
+    """
+    network = ipaddress.IPv4Network(cidr_str, strict=False)
+    return network.prefixlen < min_prefix_length
+
+
 def is_valid_hostname(hostname: str) -> bool:
     """Validate if a string is an RFC-compliant hostname.
 

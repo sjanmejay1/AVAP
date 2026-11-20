@@ -41,34 +41,41 @@ class TargetRepository:
                 details={"target": target.target},
             ) from exc
 
-    def get_by_id(self, target_id: uuid.UUID) -> Target | None:
-        """Retrieve a target by its ID.
+    def get_by_id(self, target_id: uuid.UUID, user_id: uuid.UUID) -> Target | None:
+        """Retrieve one of the user's targets by its ID.
 
         Args:
             target_id: The UUID of the target.
+            user_id: The owning user; other users' targets are never returned.
 
         Returns:
             The Target instance if found, None otherwise.
         """
-        stmt = select(Target).where(Target.id == target_id)
+        stmt = select(Target).where(Target.id == target_id, Target.user_id == user_id)
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def get_by_value(self, target_value: str) -> Target | None:
-        """Retrieve a target by its normalized value.
+    def get_by_value(self, target_value: str, user_id: uuid.UUID) -> Target | None:
+        """Retrieve one of the user's targets by its normalized value.
 
         Args:
             target_value: The normalized string value of the target.
+            user_id: The owning user.
 
         Returns:
             The Target instance if found, None otherwise.
         """
-        stmt = select(Target).where(Target.target == target_value)
+        stmt = select(Target).where(
+            Target.target == target_value, Target.user_id == user_id
+        )
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def get_all(self, skip: int = 0, limit: int = 50) -> tuple[Sequence[Target], int]:
-        """Retrieve a paginated list of all targets.
+    def get_all(
+        self, user_id: uuid.UUID, skip: int = 0, limit: int = 50
+    ) -> tuple[Sequence[Target], int]:
+        """Retrieve a paginated list of the user's targets.
 
         Args:
+            user_id: The owning user.
             skip: Number of records to skip (offset).
             limit: Maximum number of records to return.
 
@@ -77,12 +84,18 @@ class TargetRepository:
         """
         # Get items
         stmt = (
-            select(Target).offset(skip).limit(limit).order_by(Target.created_at.desc())
+            select(Target)
+            .where(Target.user_id == user_id)
+            .offset(skip)
+            .limit(limit)
+            .order_by(Target.created_at.desc())
         )
         items = self.session.execute(stmt).scalars().all()
 
         # Get total count (for pagination)
-        count_stmt = select(func.count()).select_from(Target)
+        count_stmt = (
+            select(func.count()).select_from(Target).where(Target.user_id == user_id)
+        )
         total = self.session.execute(count_stmt).scalar() or 0
 
         return items, total

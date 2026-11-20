@@ -12,6 +12,7 @@ from app.core.exceptions import (
 from app.models.target import Target
 from app.schemas.target import CreateTargetRequest, UpdateTargetRequest
 from app.services.target_service import TargetService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
@@ -64,16 +65,20 @@ class TestCreateTarget:
         mock_repo.get_by_value.return_value = None
 
         # Mock repository create return
-        expected_target = Target(target="example.com", target_type=TargetType.HOSTNAME)
+        expected_target = Target(
+            user_id=TEST_USER_ID,
+            target="example.com",
+            target_type=TargetType.HOSTNAME,
+        )
         mock_repo.create.return_value = expected_target
 
-        result = service.create_target(request)
+        result = service.create_target(TEST_USER_ID, request)
 
         # Verify normalization and classification
         assert result.target == "example.com"
         assert result.target_type == TargetType.HOSTNAME
 
-        mock_repo.get_by_value.assert_called_once_with("example.com")
+        mock_repo.get_by_value.assert_called_once_with("example.com", TEST_USER_ID)
         # Ensure we passed a correctly configured Target to the repo
         created_arg = mock_repo.create.call_args[0][0]
         assert created_arg.target == "example.com"
@@ -82,11 +87,11 @@ class TestCreateTarget:
     def test_create_duplicate_target(self, service, mock_repo):
         request = CreateTargetRequest(target="192.168.1.1")
         mock_repo.get_by_value.return_value = Target(
-            id=uuid.uuid4(), target="192.168.1.1"
+            user_id=TEST_USER_ID, id=uuid.uuid4(), target="192.168.1.1"
         )
 
         with pytest.raises(DuplicateException):
-            service.create_target(request)
+            service.create_target(TEST_USER_ID, request)
 
         mock_repo.create.assert_not_called()
 
@@ -95,7 +100,10 @@ class TestUpdateTarget:
     def test_update_valid_target(self, service, mock_repo):
         target_id = uuid.uuid4()
         existing = Target(
-            id=target_id, target="old.com", target_type=TargetType.HOSTNAME
+            user_id=TEST_USER_ID,
+            id=target_id,
+            target="old.com",
+            target_type=TargetType.HOSTNAME,
         )
 
         mock_repo.get_by_id.return_value = existing
@@ -105,7 +113,7 @@ class TestUpdateTarget:
         )
 
         request = UpdateTargetRequest(target="new.com")
-        result = service.update_target(target_id, request)
+        result = service.update_target(TEST_USER_ID, target_id, request)
 
         assert result.target == "new.com"
         assert result.target_type == TargetType.HOSTNAME
@@ -115,24 +123,31 @@ class TestUpdateTarget:
         mock_repo.get_by_id.return_value = None
 
         with pytest.raises(NotFoundException):
-            service.update_target(uuid.uuid4(), UpdateTargetRequest(target="1.1.1.1"))
+            service.update_target(
+                TEST_USER_ID, uuid.uuid4(), UpdateTargetRequest(target="1.1.1.1")
+            )
 
     def test_update_target_duplicate_conflict(self, service, mock_repo):
         target_id = uuid.uuid4()
-        existing = Target(id=target_id, target="old.com")
-        conflict = Target(id=uuid.uuid4(), target="new.com")
+        existing = Target(user_id=TEST_USER_ID, id=target_id, target="old.com")
+        conflict = Target(user_id=TEST_USER_ID, id=uuid.uuid4(), target="new.com")
 
         mock_repo.get_by_id.return_value = existing
         mock_repo.get_by_value.return_value = conflict
 
         with pytest.raises(DuplicateException):
-            service.update_target(target_id, UpdateTargetRequest(target="new.com"))
+            service.update_target(
+                TEST_USER_ID, target_id, UpdateTargetRequest(target="new.com")
+            )
 
     def test_update_same_target_value_is_allowed(self, service, mock_repo):
         # Updating to the same value shouldn't trigger duplicate exception
         target_id = uuid.uuid4()
         existing = Target(
-            id=target_id, target="192.168.1.1", target_type=TargetType.IPV4
+            user_id=TEST_USER_ID,
+            id=target_id,
+            target="192.168.1.1",
+            target_type=TargetType.IPV4,
         )
 
         mock_repo.get_by_id.return_value = existing
@@ -141,7 +156,7 @@ class TestUpdateTarget:
         mock_repo.update.return_value = existing
 
         result = service.update_target(
-            target_id, UpdateTargetRequest(target="192.168.1.1")
+            TEST_USER_ID, target_id, UpdateTargetRequest(target="192.168.1.1")
         )
 
         assert result.target == "192.168.1.1"

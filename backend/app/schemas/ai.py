@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 
@@ -107,6 +108,7 @@ class AIHostInventoryContext(BaseModel):
 
 
 _ALLOWED_SEVERITY_RATINGS = {"None", "Low", "Medium", "High", "Critical"}
+_CVE_ID_RE = re.compile(r"CVE-\d{4}-\d{4,}")
 
 
 class InferredVulnerabilityItem(BaseModel):
@@ -126,6 +128,19 @@ class InferredVulnerabilityItem(BaseModel):
     description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_LENGTH)
 
     model_config = ConfigDict(str_strip_whitespace=True)
+
+    @field_validator("cve")
+    @classmethod
+    def _drop_malformed_cve(cls, val: str | None) -> str | None:
+        """Keep only well-formed CVE IDs; anything else becomes null.
+
+        The model's CVE is untrusted. A malformed ID is dropped rather than
+        rejecting the whole finding, which may still be useful advice.
+        """
+        if val is None:
+            return None
+        normalized = val.strip().upper()
+        return normalized if _CVE_ID_RE.fullmatch(normalized) else None
 
     @field_validator("severity_rating")
     @classmethod

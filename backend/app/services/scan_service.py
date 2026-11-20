@@ -9,12 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.ai.manager import AIManager
 from app.audit.context import AuditContext
+from app.core.config import get_settings
 from app.core.enums import (
     AuditEventCategory,
     AuditEventType,
     AuditOutcome,
     AuditResourceType,
-    ScanProfile,
     ScanStatus,
 )
 from app.core.exceptions import (
@@ -25,6 +25,7 @@ from app.core.exceptions import (
     ScannerCancelledException,
     ScannerExecutionException,
     ScannerTimeoutException,
+    TooManyRequestsException,
 )
 from app.database.session import SessionLocal
 from app.models.scan_job import ScanJob
@@ -40,6 +41,7 @@ from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.scanners.interfaces import IScannerEngine
 from app.scanners.scan_artifact import ScanArtifact
 from app.scanners.scan_runtime import ScanRuntimeRegistry
+from app.scanners.scanner_manager import resolve_scan_profile
 from app.schemas.scan import CreateScanRequest
 from app.services.ai_vulnerability_discovery_service import (
     AIVulnerabilityDiscoveryService,
@@ -49,6 +51,9 @@ from app.services.inventory_service import InventoryService
 from app.services.risk_service import RiskService
 
 logger = logging.getLogger(__name__)
+
+_SERVER_RESTART_FAILURE_REASON = "Scan aborted: backend server restarted."
+_UNEXPECTED_FAILURE_REASON = "Scan failed due to an unexpected internal error."
 
 
 class ScanService:
@@ -68,6 +73,7 @@ class ScanService:
         self.target_repository = target_repository
         self.scanner_engine = scanner_engine
         self.audit_service = audit_service
+        self.settings = get_settings()
         # Passed through to AIVulnerabilityDiscoveryService for the post-scan
         # discovery step. None means "let it construct its own default
         # AIManager()" (the real provider) — tests inject a fake here so the
@@ -128,7 +134,10 @@ class ScanService:
             raise
 
     def create_scan(
-        self, request: CreateScanRequest, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        request: CreateScanRequest,
+        audit_context: AuditContext | None = None,
     ) -> ScanJob:
         """Create a new scan job and dispatch it to the scanner engine in
         the background.
@@ -141,9 +150,15 @@ class ScanService:
         """
 
         # Verify target exists
-        target = self.target_repository.get_by_id(request.target_id)
+        target = self.target_repository.get_by_id(request.target_id, user_id)
         if not target:
             raise NotFoundException(f"Target with ID {request.target_id} not found.")
+
+        # Resolve the requested profile before anything is persisted, so an
+        # unknown profile is rejected with 422 instead of creating a job that
+        # can only fail later on the background thread. The canonical enum
+        # value ("FULL", not "full") is what gets stored and dispatched.
+        scan_profile = resolve_scan_profile(request.scan_profile).value
 
         # Check for duplicate active scans (business rule). PENDING is
         # included alongside RUNNING to close the race where a second scan
@@ -157,16 +172,19 @@ class ScanService:
                 f"A scan is already running for target {request.target_id}."
             )
 
-        # Every scan runs FULL regardless of what the request asks for: the
-        # platform's discovery pipeline (asset/service inventory, AI
-        # vulnerability inference, risk scoring) depends on complete port
-        # and service data, which only the FULL profile reliably produces.
-        # request.scan_profile is intentionally never trusted here.
-        scan_profile = ScanProfile.FULL.value
+        # Enforce global concurrent scan cap (across all targets).
+        active_count = self.scan_repository.count_active_scans()
+        if active_count >= self.settings.max_concurrent_scans:
+            limit = self.settings.max_concurrent_scans
+            raise TooManyRequestsException(
+                f"Maximum concurrent scan limit reached ({limit}). "
+                "Please wait for active scans to complete."
+            )
 
         # Create scan job
         scan_job = ScanJob(
             target_id=target.id,
+            user_id=user_id,
             scan_type=scan_profile,
             status=ScanStatus.PENDING,
         )
@@ -251,9 +269,11 @@ class ScanService:
                 stdout = exc.details.get("stdout", "")
                 stderr = exc.details.get("stderr", "")
                 output_path = exc.details.get("output_path")
-            except Exception as exc:  # noqa: BLE001 - last-resort, must not crash the thread
+            except Exception:  # noqa: BLE001 - last-resort, must not crash the thread
                 final_status = ScanStatus.FAILED
-                failure_reason = str(exc)
+                # failure_reason is returned to API clients; the exception
+                # text (paths, driver errors) goes to the log only.
+                failure_reason = _UNEXPECTED_FAILURE_REASON
                 event_type = AuditEventType.SCAN_FAILED
                 outcome = AuditOutcome.FAILURE
                 stdout, stderr, output_path = "", "", None
@@ -414,7 +434,9 @@ class ScanService:
                 audit_service,
                 ai_manager=self.ai_manager,
             )
-            ai_discovery_service.discover_for_package(package, AuditContext.system())
+            ai_discovery_service.discover_for_package(
+                package, scan_job.user_id, AuditContext.system()
+            )
         except Exception:
             logger.exception(
                 "AI vulnerability discovery failed for scan; scan results are "
@@ -438,8 +460,70 @@ class ScanService:
                 extra={"scan_id": str(scan_id)},
             )
 
+    def recover_interrupted_scans(
+        self, audit_context: AuditContext | None = None
+    ) -> int:
+        """Fail every scan left PENDING or RUNNING by a previous server process.
+
+        Scans run on in-process daemon threads, so a restart kills them while
+        their rows stay active and block new scans of the same target. Called
+        once at startup. Assumes a single uvicorn worker: with several
+        workers, one worker's startup would fail another worker's live scans.
+
+        Returns:
+            The number of scans transitioned to FAILED.
+        """
+        active_scans = self.scan_repository.get_active_scans()
+        if not active_scans:
+            return 0
+
+        context = audit_context or AuditContext.system()
+        completed_at = datetime.now(UTC)
+        try:
+            for scan_job in active_scans:
+                scan_job.status = ScanStatus.FAILED
+                scan_job.completed_at = completed_at
+                scan_job.failure_reason = _SERVER_RESTART_FAILURE_REASON
+                self.scan_repository.update(scan_job)
+                self.audit_service.append_event(
+                    event_type=AuditEventType.SCAN_FAILED,
+                    category=AuditEventCategory.SCAN,
+                    outcome=AuditOutcome.FAILURE,
+                    context=context,
+                    resource_type=AuditResourceType.SCAN,
+                    resource_id=scan_job.id,
+                    scan_id=scan_job.id,
+                    metadata={
+                        "status": ScanStatus.FAILED.value,
+                        "failure_category": "ServerRestart",
+                    },
+                )
+            self.scan_repository.session.commit()
+        except Exception:
+            self.scan_repository.session.rollback()
+            logger.error(
+                "Startup scan recovery failed; transaction rolled back.",
+                extra={"context": {"operation": "recover_interrupted_scans"}},
+                exc_info=True,
+            )
+            raise
+
+        logger.warning(
+            "Startup recovery marked interrupted scans as FAILED.",
+            extra={
+                "context": {
+                    "operation": "recover_interrupted_scans",
+                    "recovered_count": len(active_scans),
+                }
+            },
+        )
+        return len(active_scans)
+
     def cancel_scan(
-        self, scan_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        scan_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> ScanJob:
         """Request cancellation of a running scan job.
 
@@ -448,7 +532,7 @@ class ScanService:
         thread notices (within about a second) and persists whatever
         output the scanner had produced so far.
         """
-        scan_job = self.get_scan(scan_id)
+        scan_job = self.get_scan(scan_id, user_id)
         if scan_job.status != ScanStatus.RUNNING:
             raise ConflictException(
                 f"Scan {scan_id} is not running (current status: "
@@ -463,28 +547,39 @@ class ScanService:
 
         return scan_job
 
-    def get_scan(self, scan_id: uuid.UUID) -> ScanJob:
-        """Retrieve a scan job by its ID."""
-        scan_job = self.scan_repository.get_by_id(scan_id)
+    def get_scan(self, scan_id: uuid.UUID, user_id: uuid.UUID) -> ScanJob:
+        """Retrieve one of the user's scan jobs by its ID."""
+        scan_job = self.scan_repository.get_owned(scan_id, user_id)
         if not scan_job:
             raise NotFoundException(f"Scan job with ID {scan_id} not found.")
         return scan_job
 
     def get_all_scans(
-        self, skip: int = 0, limit: int = 100, target_id: uuid.UUID | None = None
+        self,
+        user_id: uuid.UUID,
+        skip: int = 0,
+        limit: int = 100,
+        target_id: uuid.UUID | None = None,
     ) -> Sequence[ScanJob]:
-        """Retrieve all scan jobs, optionally scoped to one target."""
-        return self.scan_repository.get_all(skip=skip, limit=limit, target_id=target_id)
+        """Retrieve the user's scan jobs, optionally scoped to one target."""
+        return self.scan_repository.get_all(
+            user_id=user_id, skip=skip, limit=limit, target_id=target_id
+        )
 
-    def count_scans(self, target_id: uuid.UUID | None = None) -> int:
-        """Count scan jobs, optionally scoped to one target."""
-        return self.scan_repository.count(target_id=target_id)
+    def count_scans(
+        self, user_id: uuid.UUID, target_id: uuid.UUID | None = None
+    ) -> int:
+        """Count the user's scan jobs, optionally scoped to one target."""
+        return self.scan_repository.count(user_id=user_id, target_id=target_id)
 
     def delete_scan(
-        self, scan_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        scan_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> None:
-        """Delete a scan job."""
-        scan_job = self.get_scan(scan_id)
+        """Delete one of the user's scan jobs."""
+        scan_job = self.get_scan(scan_id, user_id)
         # Note: Depending on business rules, we might not want to delete running scans
         if scan_job.status == ScanStatus.RUNNING:
             raise ConflictException("Cannot delete a running scan.")

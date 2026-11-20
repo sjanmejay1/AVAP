@@ -14,6 +14,7 @@ from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
 from app.schemas.ai import AIRemediationContext, RecommendationOutput
+from tests.auth_helpers import TEST_USER_ID
 
 
 def _context(**overrides) -> AIRemediationContext:
@@ -115,15 +116,20 @@ def test_generating_recommendation_does_not_modify_risk_assessment(db_session):
     from app.services.audit_service import AuditService
     from tests.services.test_ai_service import FakeAIManager
 
-    target = Target(target="10.60.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.60.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(scan_job)
     db_session.flush()
-    asset = Asset(ipv4="10.60.0.1")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.60.0.1")
     db_session.add(asset)
     db_session.flush()
     vulnerability = Vulnerability(
@@ -158,7 +164,7 @@ def test_generating_recommendation_does_not_modify_risk_assessment(db_session):
         audit_service=AuditService(AuditRepository(db_session)),
         ai_manager=FakeAIManager(),
     )
-    service.generate_recommendation(ra.id)
+    service.generate_recommendation(TEST_USER_ID, ra.id)
 
     db_session.refresh(ra)
     assert ra.risk_score == original_score

@@ -29,7 +29,6 @@ class ScannerType(str, enum.Enum):
     """Supported scanner implementations."""
 
     NMAP = "NMAP"
-    OPENVAS = "OPENVAS"
 
 
 class ScanProfile(str, enum.Enum):
@@ -83,6 +82,7 @@ class AuditEventCategory(str, enum.Enum):
     RISK = "RISK"
     AI = "AI"
     REPORT = "REPORT"
+    AUTH = "AUTH"
 
 
 class AuditEventType(str, enum.Enum):
@@ -121,6 +121,15 @@ class AuditEventType(str, enum.Enum):
     REPORT_DOWNLOADED = "REPORT_DOWNLOADED"
     REPORT_DELETED = "REPORT_DELETED"
 
+    USER_REGISTERED = "USER_REGISTERED"
+    USER_LOGIN_SUCCEEDED = "USER_LOGIN_SUCCEEDED"
+    USER_LOGIN_FAILED = "USER_LOGIN_FAILED"
+    USER_LOGGED_OUT = "USER_LOGGED_OUT"
+    USER_PASSWORD_CHANGED = "USER_PASSWORD_CHANGED"  # noqa: S105 # nosec B105
+    REFRESH_TOKEN_REUSE_DETECTED = "REFRESH_TOKEN_REUSE_DETECTED"  # noqa: S105 # nosec B105
+    API_KEY_SAVED = "API_KEY_SAVED"
+    API_KEY_DELETED = "API_KEY_DELETED"
+
 
 class AuditOutcome(str, enum.Enum):
     """Structured outcome of an audited business action.
@@ -136,17 +145,15 @@ class AuditOutcome(str, enum.Enum):
 class AuditActorType(str, enum.Enum):
     """Actor classification for an audit event.
 
-    AVAP currently has no authentication, users, or RBAC. SYSTEM represents
-    an action performed by internal orchestration with no HTTP caller (e.g.
-    a service invoked directly rather than through a route). ANONYMOUS
-    represents any current HTTP-triggered action, since no caller identity
-    can be established yet. An AUTHENTICATED_USER value is deliberately not
-    defined until real authentication exists — adding it later is a
-    backward-compatible enum extension, not a redesign.
+    SYSTEM is internal orchestration with no HTTP caller (e.g. the
+    background scan worker). ANONYMOUS is an HTTP request without a
+    verified identity (e.g. a failed login). USER is an authenticated
+    user; actor_id then holds the user's id.
     """
 
     SYSTEM = "SYSTEM"
     ANONYMOUS = "ANONYMOUS"
+    USER = "USER"
 
 
 class AuditResourceType(str, enum.Enum):
@@ -161,3 +168,11 @@ class AuditResourceType(str, enum.Enum):
     RISK_ASSESSMENT = "RISK_ASSESSMENT"
     AI_RECOMMENDATION = "AI_RECOMMENDATION"
     REPORT = "REPORT"
+    USER = "USER"
+    API_KEY = "API_KEY"
+
+
+class AIKeyProvider(str, enum.Enum):
+    """AI providers a user can store a key for."""
+
+    HUGGINGFACE = "huggingface"

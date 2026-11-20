@@ -9,14 +9,24 @@ from app.models.report import Report
 from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.repositories.report_repository import ReportRepository
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def scan_job(db_session):
-    target = Target(target="10.70.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.70.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -55,25 +65,30 @@ def test_create_report(repository, scan_job):
     assert report.scan_id == scan_job.id
 
 
-def test_get_by_id_returns_report(repository, scan_job):
+def test_get_owned_returns_report(repository, scan_job):
     created = repository.create(_report(scan_job.id))
-    fetched = repository.get_by_id(created.id)
+    fetched = repository.get_owned(created.id, TEST_USER_ID)
     assert fetched is not None
     assert fetched.id == created.id
 
 
-def test_get_by_id_returns_none_when_absent(repository):
-    assert repository.get_by_id(uuid.uuid4()) is None
+def test_get_owned_returns_none_when_absent(repository):
+    assert repository.get_owned(uuid.uuid4(), TEST_USER_ID) is None
 
 
 # --- List / filter ---
 
 
 def test_get_all_filters_by_scan(repository, scan_job, db_session):
-    other_target = Target(target="10.70.0.2", target_type=TargetType.IPV4)
+    other_target = Target(
+        user_id=TEST_USER_ID,
+        target="10.70.0.2",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(other_target)
     db_session.flush()
     other_scan = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=other_target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(other_scan)
@@ -87,7 +102,7 @@ def test_get_all_filters_by_scan(repository, scan_job, db_session):
         )
     )
 
-    items, total = repository.get_all(scan_id=scan_job.id)
+    items, total = repository.get_all(TEST_USER_ID, scan_id=scan_job.id)
     assert total == 1
     assert items[0].scan_id == scan_job.id
 
@@ -97,7 +112,7 @@ def test_get_all_lists_every_report_without_filter(repository, scan_job):
     repository.create(
         _report(scan_job.id, generated_at=datetime.now(UTC) + timedelta(seconds=1))
     )
-    items, total = repository.get_all()
+    items, total = repository.get_all(TEST_USER_ID)
     assert total == 2
 
 
@@ -136,7 +151,7 @@ def test_repeated_generation_creates_new_immutable_row(repository, scan_job):
     )
     assert first.id != second.id
 
-    items, total = repository.get_all(scan_id=scan_job.id)
+    items, total = repository.get_all(TEST_USER_ID, scan_id=scan_job.id)
     assert total == 2
 
 

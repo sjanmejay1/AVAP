@@ -8,42 +8,54 @@ calls to the middleware function.
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.core.enums import AuditActorType
+from app.core.enums import AuditActorType, AuditEventType
+from app.models.audit_event import AuditEvent
+from tests.auth_helpers import TEST_USER_ID
 
 
 def _create_target(client: TestClient, ip="203.0.113.200", **headers):
     return client.post("/api/v1/targets", json={"target": ip}, headers=headers or None)
 
 
-def _latest_target_created_event(client: TestClient):
-    response = client.get(
-        "/api/v1/audit", params={"event_type": "TARGET_CREATED", "limit": 1}
+def _latest_target_created_event(db_session):
+    stmt = (
+        select(AuditEvent)
+        .where(AuditEvent.event_type == AuditEventType.TARGET_CREATED)
+        .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
+        .limit(1)
     )
-    return response.json()["data"]["events"][0]
+    event = db_session.execute(stmt).scalar_one()
+    return {
+        "request_id": event.request_id,
+        "source_ip": event.source_ip,
+        "actor_type": event.actor_type.value,
+        "actor_id": event.actor_id,
+    }
 
 
 # --- Request ID: generated when absent, valid inbound reused, invalid replaced ---
 
 
-def test_request_id_generated_when_absent(client: TestClient):
+def test_request_id_generated_when_absent(client: TestClient, db_session):
     response = _create_target(client, ip="203.0.113.201")
     assert response.status_code == 201
     assert "X-Request-ID" in response.headers
     assert len(response.headers["X-Request-ID"]) > 0
 
-    event = _latest_target_created_event(client)
+    event = _latest_target_created_event(db_session)
     assert event["request_id"] == response.headers["X-Request-ID"]
 
 
-def test_valid_inbound_request_id_is_reused(client: TestClient):
+def test_valid_inbound_request_id_is_reused(client: TestClient, db_session):
     inbound_id = "client-supplied-id-123"
     response = _create_target(
         client, ip="203.0.113.202", **{"X-Request-ID": inbound_id}
     )
     assert response.headers["X-Request-ID"] == inbound_id
 
-    event = _latest_target_created_event(client)
+    event = _latest_target_created_event(db_session)
     assert event["request_id"] == inbound_id
 
 
@@ -71,12 +83,14 @@ def test_malformed_symbols_request_id_is_replaced(client: TestClient):
 # --- Client IP / actor: forwarded headers never trusted, no impersonation ---
 
 
-def test_forwarded_for_header_does_not_change_recorded_source_ip(client: TestClient):
+def test_forwarded_for_header_does_not_change_recorded_source_ip(
+    client: TestClient, db_session
+):
     _create_target(client, ip="203.0.113.206")
-    direct_event = _latest_target_created_event(client)
+    direct_event = _latest_target_created_event(db_session)
 
     _create_target(client, ip="203.0.113.207", **{"X-Forwarded-For": "1.2.3.4"})
-    spoofed_event = _latest_target_created_event(client)
+    spoofed_event = _latest_target_created_event(db_session)
 
     # Both requests come from the same TestClient connection; the forwarded
     # header must not change what gets recorded.
@@ -84,19 +98,22 @@ def test_forwarded_for_header_does_not_change_recorded_source_ip(client: TestCli
     assert spoofed_event["source_ip"] != "1.2.3.4"
 
 
-def test_real_ip_header_does_not_change_recorded_source_ip(client: TestClient):
+def test_real_ip_header_does_not_change_recorded_source_ip(
+    client: TestClient, db_session
+):
     _create_target(client, ip="203.0.113.208", **{"X-Real-IP": "9.9.9.9"})
-    event = _latest_target_created_event(client)
+    event = _latest_target_created_event(db_session)
     assert event["source_ip"] != "9.9.9.9"
 
 
-def test_actor_impersonation_headers_are_ignored(client: TestClient):
+def test_actor_impersonation_headers_are_ignored(client: TestClient, db_session):
     response = _create_target(
         client,
         ip="203.0.113.209",
         **{"X-User": "admin", "X-Username": "root", "X-Actor-ID": "superuser"},
     )
     assert response.status_code == 201
-    event = _latest_target_created_event(client)
-    assert event["actor_type"] == AuditActorType.ANONYMOUS.value
-    assert event["actor_id"] is None
+    event = _latest_target_created_event(db_session)
+    # The actor comes only from the verified token, never from headers.
+    assert event["actor_type"] == AuditActorType.USER.value
+    assert event["actor_id"] == str(TEST_USER_ID)

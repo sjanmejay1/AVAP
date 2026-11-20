@@ -3,8 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
+from app.models.user import User
 from app.repositories.asset_repository import AssetRepository
 from app.schemas.asset import AssetDetailResponse, AssetListResponse
 from app.services.asset_service import AssetService
@@ -36,9 +38,11 @@ def list_assets(
         None, description="Filter to assets discovered by this specific scan"
     ),
     service: AssetService = Depends(get_asset_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve a paginated, filtered list of assets, including their open services."""
     items, total = service.get_all_assets(
+        current_user.id,
         skip=skip,
         limit=limit,
         ip=ip,
@@ -61,9 +65,10 @@ def list_assets(
 def get_asset(
     asset_id: uuid.UUID,
     service: AssetService = Depends(get_asset_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve details of a specific asset including open network services."""
-    asset = service.get_asset(asset_id)
+    asset = service.get_asset(asset_id, current_user.id)
     return {"data": AssetDetailResponse.model_validate(asset)}
 
 
@@ -75,6 +80,7 @@ def get_asset(
 def delete_asset(
     asset_id: uuid.UUID,
     service: AssetService = Depends(get_asset_service),
+    current_user: User = Depends(get_current_user),
 ) -> None:
     """Delete an asset from the system."""
-    service.delete_asset(asset_id)
+    service.delete_asset(asset_id, current_user.id)

@@ -2,7 +2,7 @@ import ctypes
 import logging
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 -- shell=False, fixed argv only (getcap probe)
 import uuid
 
 from app.core.config import get_settings
@@ -54,8 +54,11 @@ def detect_privileged_mode(settings=None) -> bool:
         try:
             if ctypes.windll.shell32.IsUserAnAdmin() != 0:
                 return True
-        except Exception:  # noqa: S110
-            pass
+        except Exception:
+            logger.debug(
+                "Windows admin check unavailable; assuming not elevated.",
+                extra={"context": {"operation": "detect_privileged_mode"}},
+            )
 
         # 2. Check for Npcap registry keys (allows raw packet operations via driver)
         try:
@@ -73,8 +76,11 @@ def detect_privileged_mode(settings=None) -> bool:
                     return True
                 except OSError:
                     continue
-        except Exception:  # noqa: S110
-            pass
+        except Exception:
+            logger.debug(
+                "Npcap registry probe failed; assuming no raw-packet driver.",
+                extra={"context": {"operation": "detect_privileged_mode"}},
+            )
 
         return False
 
@@ -96,8 +102,11 @@ def detect_privileged_mode(settings=None) -> bool:
         )
         if "cap_net_raw" in res.stdout:
             return True
-    except Exception:  # noqa: S110
-        pass
+    except Exception:
+        logger.debug(
+            "getcap probe failed; assuming nmap lacks cap_net_raw.",
+            extra={"context": {"operation": "detect_privileged_mode"}},
+        )
 
     return False
 

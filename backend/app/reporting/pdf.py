@@ -126,9 +126,9 @@ def _build_asset_overview(report_data: ReportData, styles: dict) -> list:
     for asset in report_data.assets:
         rows.append(
             [
-                templates.safe_text(asset.ipv4),
-                templates.safe_text(asset.hostname or "-"),
-                templates.safe_text(asset.operating_system or "-"),
+                templates.table_cell(asset.ipv4, styles),
+                templates.table_cell(asset.hostname or "-", styles),
+                templates.table_cell(asset.operating_system or "-", styles),
                 asset.risk_level.value,
                 str(asset.vulnerability_count),
             ]

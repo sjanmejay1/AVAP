@@ -11,6 +11,38 @@ from app.scanners.scanner_factory import ScannerFactory
 logger = logging.getLogger(__name__)
 
 
+def resolve_scan_profile(scan_profile: str) -> ScanProfile:
+    """Map a case-insensitive profile identifier to the ScanProfile enum.
+
+    Args:
+        scan_profile: The string profile name (case-insensitive).
+
+    Returns:
+        The ScanProfile enum.
+
+    Raises:
+        ValidationException if the profile name is invalid.
+    """
+    norm_profile = scan_profile.strip().upper()
+
+    # Also map common alternate spellings/cases if needed
+    # e.g., 'PING' -> 'DISCOVERY'
+    if norm_profile in ["DISCOVERY", "PING", "PING_SCAN"]:
+        return ScanProfile.DISCOVERY
+    elif norm_profile in ["PORT_SCAN", "PORT", "PORTS", "FAST"]:
+        return ScanProfile.PORT_SCAN
+    elif norm_profile in ["FULL", "DEEP", "ALL"]:
+        return ScanProfile.FULL
+
+    try:
+        return ScanProfile[norm_profile]
+    except KeyError as exc:
+        raise ValidationException(
+            f"Invalid scan profile: '{scan_profile}'. "
+            f"Supported profiles: {[p.name for p in ScanProfile]}"
+        ) from exc
+
+
 class ScannerManager(IScannerEngine):
     """Entry point for all scanner execution requests.
 
@@ -28,33 +60,9 @@ class ScannerManager(IScannerEngine):
     def _parse_scan_profile(self, scan_profile: str) -> ScanProfile:
         """Map string profile identifier to ScanProfile enum.
 
-        Args:
-            scan_profile: The string profile name (case-insensitive).
-
-        Returns:
-            The ScanProfile enum.
-
-        Raises:
-            ValidationException if the profile name is invalid.
+        Delegates to `resolve_scan_profile`; see it for accepted spellings.
         """
-        norm_profile = scan_profile.strip().upper()
-
-        # Also map common alternate spellings/cases if needed
-        # e.g., 'PING' -> 'DISCOVERY'
-        if norm_profile in ["DISCOVERY", "PING", "PING_SCAN"]:
-            return ScanProfile.DISCOVERY
-        elif norm_profile in ["PORT_SCAN", "PORT", "PORTS", "FAST"]:
-            return ScanProfile.PORT_SCAN
-        elif norm_profile in ["FULL", "DEEP", "ALL"]:
-            return ScanProfile.FULL
-
-        try:
-            return ScanProfile[norm_profile]
-        except KeyError as exc:
-            raise ValidationException(
-                f"Invalid scan profile: '{scan_profile}'. "
-                f"Supported profiles: {[p.name for p in ScanProfile]}"
-            ) from exc
+        return resolve_scan_profile(scan_profile)
 
     def dispatch_scan(
         self,

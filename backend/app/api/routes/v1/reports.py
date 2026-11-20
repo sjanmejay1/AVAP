@@ -5,9 +5,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.audit import get_audit_context, get_audit_service
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
+from app.models.user import User
 from app.repositories.ai_recommendation_repository import AIRecommendationRepository
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.network_service_repository import NetworkServiceRepository
@@ -55,10 +57,13 @@ def get_report_service(
 def generate_report(
     request: GenerateReportRequest,
     service: ReportService = Depends(get_report_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Generate a new immutable PDF report for a scan's current assessment state."""
-    report = service.generate_report(request.scan_id, audit_context=audit_context)
+    report = service.generate_report(
+        current_user.id, request.scan_id, audit_context=audit_context
+    )
     return {"data": ReportResponse.model_validate(report)}
 
 
@@ -72,9 +77,12 @@ def list_reports(
     limit: int = Query(50, ge=1, le=200, description="Max records to return"),
     scan_id: uuid.UUID | None = Query(None, description="Filter by source scan"),
     service: ReportService = Depends(get_report_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve a paginated, optionally scan-filtered list of report metadata."""
-    items, total = service.get_reports(skip=skip, limit=limit, scan_id=scan_id)
+    items, total = service.get_reports(
+        current_user.id, skip=skip, limit=limit, scan_id=scan_id
+    )
     responses = [ReportResponse.model_validate(item) for item in items]
     return {"data": ReportListResponse(reports=responses, total=total)}
 
@@ -87,9 +95,10 @@ def list_reports(
 def get_report(
     report_id: uuid.UUID,
     service: ReportService = Depends(get_report_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve metadata for a specific generated report."""
-    report = service.get_report(report_id)
+    report = service.get_report(report_id, current_user.id)
     return {"data": ReportResponse.model_validate(report)}
 
 
@@ -100,6 +109,7 @@ def get_report(
 def download_report(
     report_id: uuid.UUID,
     service: ReportService = Depends(get_report_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> FileResponse:
     """Download the generated PDF report.
@@ -108,7 +118,9 @@ def download_report(
     server-generated file name and the configured storage root; no
     client-supplied path or filename is ever used.
     """
-    file_path = service.get_report_file_path(report_id, audit_context=audit_context)
+    file_path = service.get_report_file_path(
+        current_user.id, report_id, audit_context=audit_context
+    )
     download_name = f"avap-report-{report_id}.pdf"
     return FileResponse(
         path=file_path,
@@ -125,7 +137,8 @@ def download_report(
 def delete_report(
     report_id: uuid.UUID,
     service: ReportService = Depends(get_report_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> None:
     """Delete a report's metadata and its associated stored file."""
-    service.delete_report(report_id, audit_context=audit_context)
+    service.delete_report(current_user.id, report_id, audit_context=audit_context)

@@ -33,6 +33,7 @@ from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.report_service import ReportService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -56,10 +57,15 @@ def _service(db_session, tmp_path: Path) -> ReportService:
 
 
 def _seed_scan_with_findings(db_session, ipv4="203.0.113.30", calculate_risk=True):
-    target = Target(target=ipv4, target_type=TargetType.IPV4)
+    target = Target(user_id=TEST_USER_ID, target=ipv4, target_type=TargetType.IPV4)
     db_session.add(target)
     db_session.flush()
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -82,7 +88,7 @@ def _seed_scan_with_findings(db_session, ipv4="203.0.113.30", calculate_risk=Tru
     )
     host = ParsedHost(ipv4=ipv4, services=[service])
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -107,7 +113,7 @@ def test_generate_report_success(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
 
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert report.scan_id == scan_job.id
     assert report.vulnerability_count == 1
@@ -119,7 +125,7 @@ def test_generate_report_success(db_session, tmp_path):
 
 def test_generate_report_without_ai_recommendation(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
-    report = _service(db_session, tmp_path).generate_report(scan_job.id)
+    report = _service(db_session, tmp_path).generate_report(TEST_USER_ID, scan_job.id)
     assert report.ai_recommendations_included == 0
 
 
@@ -128,18 +134,18 @@ def test_generate_report_without_ai_recommendation(db_session, tmp_path):
 
 def test_generate_report_missing_scan_raises(db_session, tmp_path):
     with pytest.raises(NotFoundException):
-        _service(db_session, tmp_path).generate_report(uuid.uuid4())
+        _service(db_session, tmp_path).generate_report(TEST_USER_ID, uuid.uuid4())
 
 
 def test_generate_report_missing_risk_context_raises(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session, calculate_risk=False)
     with pytest.raises(InsufficientReportDataException):
-        _service(db_session, tmp_path).generate_report(scan_job.id)
+        _service(db_session, tmp_path).generate_report(TEST_USER_ID, scan_job.id)
 
 
 def test_get_report_missing_raises(db_session, tmp_path):
     with pytest.raises(NotFoundException):
-        _service(db_session, tmp_path).get_report(uuid.uuid4())
+        _service(db_session, tmp_path).get_report(uuid.uuid4(), TEST_USER_ID)
 
 
 # --- Repeated generation / history preservation ---
@@ -149,14 +155,14 @@ def test_repeated_generation_creates_new_immutable_report(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
 
-    first = service.generate_report(scan_job.id)
-    second = service.generate_report(scan_job.id)
+    first = service.generate_report(TEST_USER_ID, scan_job.id)
+    second = service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert first.id != second.id
     assert (tmp_path / first.file_name).exists()
     assert (tmp_path / second.file_name).exists()
 
-    items, total = service.get_reports(scan_id=scan_job.id)
+    items, total = service.get_reports(TEST_USER_ID, scan_id=scan_job.id)
     assert total == 2
 
 
@@ -173,7 +179,7 @@ def test_generate_report_renderer_failure_leaves_no_partial_file(db_session, tmp
         ),
         pytest.raises(ReportRenderingException),
     ):
-        service.generate_report(scan_job.id)
+        service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert list(tmp_path.glob("*.pdf")) == []
     assert list(tmp_path.glob("*.tmp")) == []
@@ -192,7 +198,7 @@ def test_generate_report_invalid_pdf_signature_rejected(db_session, tmp_path):
         patch("app.services.report_service.render_pdf", side_effect=_write_garbage),
         pytest.raises(ReportRenderingException),
     ):
-        service.generate_report(scan_job.id)
+        service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert list(tmp_path.glob("*.pdf")) == []
 
@@ -201,7 +207,7 @@ def test_previous_valid_report_survives_failed_regeneration(db_session, tmp_path
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
 
-    baseline = service.generate_report(scan_job.id)
+    baseline = service.generate_report(TEST_USER_ID, scan_job.id)
     baseline_path = tmp_path / baseline.file_name
     assert baseline_path.exists()
 
@@ -211,10 +217,10 @@ def test_previous_valid_report_survives_failed_regeneration(db_session, tmp_path
         ),
         pytest.raises(ReportRenderingException),
     ):
-        service.generate_report(scan_job.id)
+        service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert baseline_path.exists()
-    fetched = service.get_report(baseline.id)
+    fetched = service.get_report(baseline.id, TEST_USER_ID)
     assert fetched.id == baseline.id
 
 
@@ -231,7 +237,7 @@ def test_metadata_persistence_failure_removes_orphan_file(db_session, tmp_path):
         ),
         pytest.raises(RuntimeError),
     ):
-        service.generate_report(scan_job.id)
+        service.generate_report(TEST_USER_ID, scan_job.id)
 
     assert list(tmp_path.glob("*.pdf")) == []
     remaining = db_session.query(Report).filter(Report.scan_id == scan_job.id).count()
@@ -243,7 +249,7 @@ def test_metadata_persistence_failure_removes_orphan_file(db_session, tmp_path):
 
 def test_generate_report_uses_server_generated_filename(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
-    report = _service(db_session, tmp_path).generate_report(scan_job.id)
+    report = _service(db_session, tmp_path).generate_report(TEST_USER_ID, scan_job.id)
 
     assert report.file_name == f"report_{report.id}.pdf"
     assert ".." not in report.file_name
@@ -253,32 +259,32 @@ def test_generate_report_uses_server_generated_filename(db_session, tmp_path):
 def test_get_report_file_path_stays_within_storage_root(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
-    resolved = service.get_report_file_path(report.id)
+    resolved = service.get_report_file_path(TEST_USER_ID, report.id)
     assert resolved.is_relative_to(tmp_path.resolve())
 
 
 def test_get_report_file_path_missing_file_raises_not_found(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
     (tmp_path / report.file_name).unlink()
 
     with pytest.raises(NotFoundException):
-        service.get_report_file_path(report.id)
+        service.get_report_file_path(TEST_USER_ID, report.id)
 
 
 def test_delete_report_removes_metadata_and_file(db_session, tmp_path):
     scan_job = _seed_scan_with_findings(db_session)
     service = _service(db_session, tmp_path)
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
     file_path = tmp_path / report.file_name
     assert file_path.exists()
 
-    service.delete_report(report.id)
+    service.delete_report(TEST_USER_ID, report.id)
 
     assert not file_path.exists()
     with pytest.raises(NotFoundException):
-        service.get_report(report.id)
+        service.get_report(report.id, TEST_USER_ID)

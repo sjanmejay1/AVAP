@@ -49,9 +49,9 @@ class InventoryService:
         self.scan_repository = scan_repository
         self.audit_service = audit_service
 
-    def _upsert_asset(self, host: ParsedHost) -> Asset:
-        """Upsert an asset based on IPv4 address."""
-        existing_asset = self.asset_repository.get_by_ip(host.ipv4)
+    def _upsert_asset(self, host: ParsedHost, user_id: uuid.UUID) -> Asset:
+        """Upsert one of the scan owner's assets based on IPv4 address."""
+        existing_asset = self.asset_repository.get_by_ip(host.ipv4, user_id)
 
         # Truncate string fields to DB limits (Asset: hostname 253, OS 253)
         hostname_val = host.hostname.strip()[:253] if host.hostname else None
@@ -71,6 +71,7 @@ class InventoryService:
         else:
             new_asset = Asset(
                 ipv4=host.ipv4,
+                user_id=user_id,
                 hostname=hostname_val,
                 operating_system=os_val,
             )
@@ -236,7 +237,7 @@ class InventoryService:
             # Process hosts sequentially
             for host in package.parsed_hosts:
                 # 2. Upsert Asset
-                asset = self._upsert_asset(host)
+                asset = self._upsert_asset(host, scan_job.user_id)
 
                 # A host that is up but has no open services (e.g. all
                 # ports filtered/closed) would otherwise get an Asset row

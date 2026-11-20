@@ -21,26 +21,40 @@ class ScanRepository:
         return scan_job
 
     def get_by_id(self, scan_id: uuid.UUID) -> ScanJob | None:
-        """Retrieve a scan job by its ID."""
+        """Retrieve a scan job by its ID regardless of owner.
+
+        For internal orchestration only (background worker, pipelines that
+        already hold a scan id). User-facing paths use get_owned().
+        """
         stmt = select(ScanJob).where(ScanJob.id == scan_id)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def get_owned(self, scan_id: uuid.UUID, user_id: uuid.UUID) -> ScanJob | None:
+        """Retrieve one of the user's scan jobs by its ID."""
+        stmt = select(ScanJob).where(ScanJob.id == scan_id, ScanJob.user_id == user_id)
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_all(
         self,
+        user_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
         target_id: uuid.UUID | None = None,
     ) -> Sequence[ScanJob]:
-        """Retrieve all scan jobs with pagination, optionally scoped to one target."""
-        stmt = select(ScanJob).order_by(ScanJob.created_at.desc())
+        """Retrieve the user's scan jobs, optionally scoped to one target."""
+        stmt = (
+            select(ScanJob)
+            .where(ScanJob.user_id == user_id)
+            .order_by(ScanJob.created_at.desc())
+        )
         if target_id is not None:
             stmt = stmt.where(ScanJob.target_id == target_id)
         stmt = stmt.offset(skip).limit(limit)
         return self.session.execute(stmt).scalars().all()
 
-    def count(self, target_id: uuid.UUID | None = None) -> int:
-        """Count scan jobs, optionally scoped to one target."""
-        stmt = select(func.count(ScanJob.id))
+    def count(self, user_id: uuid.UUID, target_id: uuid.UUID | None = None) -> int:
+        """Count the user's scan jobs, optionally scoped to one target."""
+        stmt = select(func.count(ScanJob.id)).where(ScanJob.user_id == user_id)
         if target_id is not None:
             stmt = stmt.where(ScanJob.target_id == target_id)
         return self.session.execute(stmt).scalar() or 0
@@ -68,3 +82,17 @@ class ScanRepository:
             ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
         )
         return self.session.execute(stmt).scalars().all()
+
+    def get_active_scans(self) -> Sequence[ScanJob]:
+        """Return all scan jobs globally that are currently PENDING or RUNNING."""
+        stmt = select(ScanJob).where(
+            ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING])
+        )
+        return self.session.execute(stmt).scalars().all()
+
+    def count_active_scans(self) -> int:
+        """Count all scan jobs globally that are currently PENDING or RUNNING."""
+        stmt = select(func.count(ScanJob.id)).where(
+            ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING])
+        )
+        return self.session.execute(stmt).scalar() or 0
