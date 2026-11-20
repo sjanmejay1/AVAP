@@ -77,6 +77,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
     # Refuse to start without strong auth secrets (names only in the error).
     settings.validate_security_settings()
+    settings.validate_storage_settings()
+    settings.validate_ai_settings()
 
     app = FastAPI(
         title=settings.app_name,

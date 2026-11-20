@@ -115,7 +115,12 @@ class TestRecoverInterruptedScans:
 class TestScanProfileHandling:
     @pytest.mark.parametrize(
         ("requested", "stored"),
-        [("full", "FULL"), ("discovery", "DISCOVERY"), ("Port_Scan", "PORT_SCAN")],
+        [
+            ("full", "FULL"),
+            ("quick", "QUICK"),
+            ("discovery", "QUICK"),
+            ("Port_Scan", "QUICK"),
+        ],
     )
     def test_profile_is_honored_and_stored_canonically(
         self, db_session, requested, stored

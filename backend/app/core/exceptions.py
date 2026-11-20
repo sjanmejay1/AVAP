@@ -141,18 +141,6 @@ class UnsupportedProviderException(AppException):
         )
 
 
-class AIProviderConfigurationException(AppException):
-    """Raised when a supported AI provider is missing required configuration."""
-
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
-        super().__init__(
-            message=message,
-            status_code=500,
-            error_code="AI_PROVIDER_CONFIGURATION_ERROR",
-            details=details,
-        )
-
-
 class AIProviderException(AppException):
     """Raised when an AI provider request fails at the transport level
     (network failure, timeout, non-success response, malformed or empty output).

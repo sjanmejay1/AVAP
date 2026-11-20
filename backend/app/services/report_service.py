@@ -31,6 +31,7 @@ from app.repositories.network_service_repository import NetworkServiceRepository
 from app.repositories.report_repository import ReportRepository
 from app.repositories.risk_repository import RiskRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
+from app.repositories.scan_host_repository import ScanHostRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
@@ -113,6 +114,7 @@ class ReportService:
             network_service_repository=self.network_service_repository,
             scan_finding_repository=self.scan_finding_repository,
             ai_recommendation_repository=self.ai_recommendation_repository,
+            scan_host_repository=ScanHostRepository(self.session),
         )
 
         logger.info(

@@ -25,8 +25,10 @@ from app.parsers.models import (
     ParsedVulnerability,
 )
 from app.repositories.asset_repository import AssetRepository
+from app.repositories.scan_host_repository import ScanHostRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.schemas.scan_host import ScanHostDetails
 from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
@@ -42,12 +44,16 @@ class InventoryService:
         vulnerability_repository: VulnerabilityRepository,
         scan_repository: ScanRepository,
         audit_service: AuditService,
+        scan_host_repository: ScanHostRepository | None = None,
     ):
         self.session = session
         self.asset_repository = asset_repository
         self.vulnerability_repository = vulnerability_repository
         self.scan_repository = scan_repository
         self.audit_service = audit_service
+        self.scan_host_repository = scan_host_repository or ScanHostRepository(
+            session
+        )
 
     def _upsert_asset(self, host: ParsedHost, user_id: uuid.UUID) -> Asset:
         """Upsert one of the scan owner's assets based on IPv4 address."""
@@ -238,6 +244,11 @@ class InventoryService:
             for host in package.parsed_hosts:
                 # 2. Upsert Asset
                 asset = self._upsert_asset(host, scan_job.user_id)
+                self.scan_host_repository.upsert(
+                    package.scan_id,
+                    asset.id,
+                    ScanHostDetails.from_parsed_host(host).model_dump(mode="json"),
+                )
 
                 # A host that is up but has no open services (e.g. all
                 # ports filtered/closed) would otherwise get an Asset row

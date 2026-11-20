@@ -31,14 +31,14 @@ class AIProviderResponse:
 class AIProviderInterface(ABC):
     """Common interface implemented by every AI provider adapter.
 
-    Every implementation must accept the application `Settings` as its sole
-    constructor argument (deriving its own provider-specific configuration,
-    e.g. API key and base URL, from it), so `AIManager.generate` can
-    construct any registered provider uniformly by type.
+    Every implementation is constructed with the application `Settings`
+    (model, timeouts) and the requesting user's own API key, so
+    `AIManager` can construct any registered provider uniformly by type.
+    There is no server-wide key.
     """
 
     @abstractmethod
-    def __init__(self, settings: Settings) -> None: ...
+    def __init__(self, settings: Settings, api_key: str) -> None: ...
 
     @abstractmethod
     def generate(self, prompt: Prompt) -> AIProviderResponse:
@@ -49,4 +49,10 @@ class AIProviderInterface(ABC):
         into AVAP AI exceptions. They must never raise raw HTTP client
         exceptions to callers.
         """
+        raise NotImplementedError
+
+    @abstractmethod
+    def check_key(self) -> None:
+        """Make the cheapest possible authenticated call to prove the key
+        works. Raises an AVAP AI exception if it does not."""
         raise NotImplementedError

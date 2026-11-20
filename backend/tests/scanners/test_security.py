@@ -25,7 +25,7 @@ def test_security_target_validation_metacharacters():
 
     for target in malicious_targets:
         with pytest.raises(ValidationException) as exc:
-            validator.validate_request(target, ScannerType.NMAP, ScanProfile.DISCOVERY)
+            validator.validate_request(target, ScannerType.NMAP, ScanProfile.QUICK)
         # Should be caught either by format validation or explicit shell char check
         assert any(
             phrase in str(exc.value)
@@ -49,7 +49,7 @@ def test_security_option_injection_prevention():
 
     for target in injection_targets:
         with pytest.raises(ScannerExecutionException) as exc:
-            adapter.build_command(target, ScanProfile.PORT_SCAN, "output.xml")
+            adapter.build_command(target, ScanProfile.QUICK, "output.xml")
         assert "cannot start with a hyphen" in str(exc.value)
 
 

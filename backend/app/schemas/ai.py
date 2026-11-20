@@ -97,10 +97,13 @@ class AIServiceBanner(BaseModel):
 
 
 class AIHostInventoryContext(BaseModel):
-    """One scanned host's discovered service inventory, for vulnerability inference."""
+    """One scanned host's discovered service inventory, for vulnerability inference.
 
-    ip: str = Field(..., max_length=45)
-    hostname: str | None = Field(None, max_length=255)
+    `host` is an opaque label such as "host-1", never an IP address or
+    hostname: the scan's addresses and names are not sent to the provider.
+    """
+
+    host: str = Field(..., max_length=45)
     operating_system: str | None = Field(None, max_length=200)
     services: list[AIServiceBanner] = Field(default_factory=list, max_length=100)
 

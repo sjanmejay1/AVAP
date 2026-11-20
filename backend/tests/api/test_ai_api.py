@@ -155,7 +155,7 @@ def test_list_providers(client: TestClient):
     response = client.get("/api/v1/ai/providers")
     assert response.status_code == 200
     data = response.json()["data"]
-    assert "openrouter" in data["supported_providers"]
+    assert data["supported_providers"] == ["huggingface"]
     assert data["active_provider"] == AIManager().resolve_provider_name()
 
 
@@ -163,7 +163,7 @@ def test_get_model_info(client: TestClient):
     response = client.get("/api/v1/ai/models")
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["provider"] == "openrouter"
+    assert data["provider"] == "huggingface"
     assert data["model"]
 
 

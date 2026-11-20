@@ -143,6 +143,6 @@ def test_report_service_module_has_no_ai_provider_imports():
         assert source is not None
         with open(source, encoding="utf-8") as handle:
             content = handle.read()
-        assert "openrouter" not in content.lower()
+        assert "huggingface" not in content.lower()
         assert "ai_manager" not in content.lower()
         assert "AIManager" not in content

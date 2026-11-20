@@ -17,7 +17,7 @@ def test_safe_scalar_metadata_accepted():
     metadata = {
         "risk_score": 8.0,
         "risk_level": "HIGH",
-        "provider": "openrouter",
+        "provider": "huggingface",
         "finding_count": 3,
         "included": True,
         "note": None,

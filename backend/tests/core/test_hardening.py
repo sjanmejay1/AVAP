@@ -72,7 +72,7 @@ def test_cidr_limit_is_configurable(monkeypatch):
 def test_execution_validator_rejects_cidr_broader_than_limit():
     with pytest.raises(ValidationException, match="too broad"):
         ExecutionValidator().validate_request(
-            "10.0.0.0/8", ScannerType.NMAP, ScanProfile.DISCOVERY
+            "10.0.0.0/8", ScannerType.NMAP, ScanProfile.QUICK
         )
 
 

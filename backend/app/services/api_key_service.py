@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
+from app.ai.manager import AIManager
 from app.audit.context import AuditContext
 from app.auth.key_cipher import KeyCipher, KeyDecryptionError
 from app.core.enums import (
@@ -84,6 +85,25 @@ class ApiKeyService:
             return self.cipher.decrypt(stored.encrypted_key)
         except KeyDecryptionError as exc:
             raise AIKeyRequiredException(provider.value) from exc
+
+    def test_key(self, user_id: uuid.UUID, provider: AIKeyProvider) -> None:
+        """Prove the saved key works with one minimal provider call.
+
+        Raises:
+            AIKeyRequiredException: if no key is saved.
+            AIProviderException: with a user-safe reason if the call fails.
+        """
+        AIManager(api_key=self.get_decrypted_key(user_id, provider)).check_key()
+
+    def find_decrypted_key(
+        self, user_id: uuid.UUID, provider: AIKeyProvider
+    ) -> str | None:
+        """Like get_decrypted_key, but None instead of an exception when the
+        user has no usable key (used where AI is optional, e.g. after a scan)."""
+        try:
+            return self.get_decrypted_key(user_id, provider)
+        except AIKeyRequiredException:
+            return None
 
     def _audit(
         self,

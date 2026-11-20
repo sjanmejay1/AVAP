@@ -51,6 +51,11 @@ class ScanJob(Base, TimestampMixin):
     # for cancelled/timed-out runs since scanners flush output incrementally.
     output_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
+    # Object-storage key of the raw output once uploaded (S3 or local store).
+    # output_file_path is cleared after a successful upload and kept only
+    # as a fallback when the upload fails.
+    output_object_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
     stdout_log: Mapped[str | None] = mapped_column(Text, nullable=True)
     stderr_log: Mapped[str | None] = mapped_column(Text, nullable=True)
 

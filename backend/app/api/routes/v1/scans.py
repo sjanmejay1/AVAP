@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.audit import get_audit_context, get_audit_service
@@ -13,10 +14,16 @@ from app.repositories.scan_repository import ScanRepository
 from app.repositories.target_repository import TargetRepository
 from app.scanners.scanner_manager import ScannerManager
 from app.schemas.scan import (
+    AIAnalysisResponse,
     CreateScanRequest,
     ScanListResponse,
     ScanResponse,
     ScanStatusResponse,
+)
+from app.schemas.scan_host import (
+    ScanHostDetails,
+    ScanHostListResponse,
+    ScanHostResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.scan_service import ScanService
@@ -113,6 +120,74 @@ def get_scan_status(
         updated_at=scan_job.updated_at,
     )
     return {"data": status_response}
+
+
+@router.get(
+    "/{scan_id}/hosts",
+    response_model=SuccessResponse[ScanHostListResponse],
+    summary="Per-host detail recorded by a scan",
+)
+def list_scan_hosts(
+    scan_id: uuid.UUID,
+    service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """OS matches, MAC/vendor, uptime, traceroute and per-port scripts for
+    every host this scan saw."""
+    records = service.list_hosts(current_user.id, scan_id)
+    hosts = [
+        ScanHostResponse(
+            asset_id=record.asset_id,
+            ipv4=record.asset.ipv4,
+            hostname=record.asset.hostname,
+            operating_system=record.asset.operating_system,
+            details=ScanHostDetails.model_validate(record.details),
+        )
+        for record in records
+    ]
+    return {"data": ScanHostListResponse(hosts=hosts, total=len(hosts))}
+
+
+@router.get(
+    "/{scan_id}/raw",
+    summary="Download the raw Nmap XML output",
+    response_class=StreamingResponse,
+)
+def download_raw_output(
+    scan_id: uuid.UUID,
+    service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Streamed through the API (never a public or pre-signed link), and
+    served as an attachment so a browser never renders it."""
+    stream = service.open_raw_output(current_user.id, scan_id)
+    return StreamingResponse(
+        stream,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="nmap-{scan_id}.xml"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post(
+    "/{scan_id}/ai-analysis",
+    response_model=SuccessResponse[AIAnalysisResponse],
+    summary="Re-run AI vulnerability analysis with your own key",
+)
+def run_ai_analysis(
+    scan_id: uuid.UUID,
+    service: ScanService = Depends(get_scan_service),
+    current_user: User = Depends(get_current_user),
+    audit_context: AuditContext = Depends(get_audit_context),
+) -> dict:
+    """AI findings are advisory and excluded from the risk score by default.
+    Returns 409 AI_KEY_REQUIRED when no Hugging Face key is saved."""
+    created = service.run_ai_analysis(
+        current_user.id, scan_id, audit_context=audit_context
+    )
+    return {"data": AIAnalysisResponse(findings_created=created)}
 
 
 @router.post(

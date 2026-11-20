@@ -34,9 +34,8 @@ class ScannerType(str, enum.Enum):
 class ScanProfile(str, enum.Enum):
     """Predefined scan profiles controlling scanner behavior."""
 
-    DISCOVERY = "DISCOVERY"
-    PORT_SCAN = "PORT_SCAN"
-    FULL = "FULL"
+    QUICK = "QUICK"  # top 1000 TCP ports, versions, OS (~1 min per host)
+    FULL = "FULL"  # all 65535 TCP ports, versions, OS, traceroute, safe NSE
 
 
 class ExecutionStatus(str, enum.Enum):

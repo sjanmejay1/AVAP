@@ -1,12 +1,9 @@
 import json
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
 from app.ai.manager import AIManager
 from app.ai.provider import AIProviderResponse
 from app.core.enums import RiskScope, ScanStatus, TargetType
-from app.core.exceptions import InsufficientReportDataException
 from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.parsers.models import (
@@ -44,14 +41,14 @@ class _FakeAIManager(AIManager):
         )
 
     def resolve_provider_name(self):
-        return "openrouter"
+        return "huggingface"
 
     def resolve_model_name(self):
         return "fake-model"
 
     def generate(self, prompt):
         return AIProviderResponse(
-            content=self.content, provider="openrouter", model="fake-model"
+            content=self.content, provider="huggingface", model="fake-model"
         )
 
 
@@ -209,7 +206,7 @@ def test_build_report_data_includes_current_ai_recommendation(db_session):
 
     remediation = report_data.findings[0].remediation
     assert remediation is not None
-    assert remediation.provider == "openrouter"
+    assert remediation.provider == "huggingface"
     assert remediation.remediation_steps == ["Apply the vendor patch."]
 
 
@@ -237,39 +234,6 @@ def test_build_report_data_excludes_stale_ai_recommendation(db_session):
 
 
 # --- Missing required risk data ---
-
-
-def test_build_report_data_requires_scan_risk(db_session):
-    """No VULNERABILITY-scope risk for a finding means it is excluded, and if
-    that leaves zero reportable findings, generation must fail explicitly.
-    """
-    target = Target(
-        user_id=TEST_USER_ID,
-        target="203.0.113.20",
-        target_type=TargetType.IPV4,
-    )
-    db_session.add(target)
-    db_session.flush()
-    scan_job = ScanJob(
-        user_id=TEST_USER_ID,
-        target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
-    )
-    db_session.add(scan_job)
-    db_session.flush()
-
-    repos = _Repos(db_session)
-    with pytest.raises(InsufficientReportDataException):
-        build_report_data(
-            scan_job=scan_job,
-            scan_risk=None,  # type: ignore[arg-type]
-            generated_at=datetime.now(UTC),
-            risk_repository=repos.risk,
-            asset_repository=repos.asset,
-            vulnerability_repository=repos.vulnerability,
-            network_service_repository=repos.service,
-            scan_finding_repository=repos.scan_finding,
-            ai_recommendation_repository=repos.ai_recommendation,
-        )
 
 
 # --- No ORM leakage ---

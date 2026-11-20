@@ -1,23 +1,30 @@
 import logging
+import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.ai.manager import AIManager
 from app.audit.context import AuditContext
+from app.auth.key_cipher import KeyCipher
 from app.core.config import get_settings
 from app.core.enums import (
+    AIKeyProvider,
     AuditEventCategory,
     AuditEventType,
     AuditOutcome,
     AuditResourceType,
+    ExecutionStatus,
+    ScannerType,
     ScanStatus,
 )
 from app.core.exceptions import (
+    AIKeyRequiredException,
     ConflictException,
     InternalException,
     NotFoundException,
@@ -28,15 +35,19 @@ from app.core.exceptions import (
     TooManyRequestsException,
 )
 from app.database.session import SessionLocal
+from app.models.scan_host import ScanHost
 from app.models.scan_job import ScanJob
+from app.parsers.models import AssessmentPackage
 from app.parsers.parser_manager import ParserManager
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.network_service_repository import NetworkServiceRepository
 from app.repositories.risk_repository import RiskRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
+from app.repositories.scan_host_repository import ScanHostRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.target_repository import TargetRepository
+from app.repositories.user_api_key_repository import UserApiKeyRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.scanners.interfaces import IScannerEngine
 from app.scanners.scan_artifact import ScanArtifact
@@ -46,14 +57,20 @@ from app.schemas.scan import CreateScanRequest
 from app.services.ai_vulnerability_discovery_service import (
     AIVulnerabilityDiscoveryService,
 )
+from app.services.api_key_service import ApiKeyService
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.risk_service import RiskService
+from app.storage.base import ObjectStorage, StorageError, raw_output_key
+from app.storage.factory import build_object_storage
+from app.storage.local import LocalObjectStorage
 
 logger = logging.getLogger(__name__)
 
 _SERVER_RESTART_FAILURE_REASON = "Scan aborted: backend server restarted."
 _UNEXPECTED_FAILURE_REASON = "Scan failed due to an unexpected internal error."
+_PARSE_FAILURE_REASON = "Scan output could not be parsed."
+_RAW_OUTPUT_CONTENT_TYPE = "application/xml"
 
 
 class ScanService:
@@ -68,6 +85,7 @@ class ScanService:
         session_factory: Callable[[], Session] | None = None,
         session_finalizer: Callable[[Session], None] | None = None,
         ai_manager: AIManager | None = None,
+        object_storage: ObjectStorage | None = None,
     ):
         self.scan_repository = scan_repository
         self.target_repository = target_repository
@@ -79,6 +97,9 @@ class ScanService:
         # AIManager()" (the real provider) — tests inject a fake here so the
         # suite never makes a real network call to an AI provider.
         self.ai_manager = ai_manager
+        # Where raw scanner output is kept once a scan ends (S3 or a local
+        # directory, per STORAGE_BACKEND).
+        self.object_storage = object_storage or build_object_storage(self.settings)
         # Opens the background execution thread's own DB session — the
         # request-scoped session passed above is closed by the time that
         # thread runs. Defaults to the real session factory; tests override
@@ -305,7 +326,7 @@ class ScanService:
             # timezone-aware — subtracting the two can raise TypeError.
             scan_job.execution_duration = time.monotonic() - monotonic_start
             scan_job.failure_reason = failure_reason
-            scan_job.output_file_path = str(output_path) if output_path else None
+            self._store_raw_output(scan_job, output_path)
             scan_job.stdout_log = stdout
             scan_job.stderr_log = stderr
             scan_repo.update(scan_job)
@@ -359,10 +380,13 @@ class ScanService:
             scan_job.status = ScanStatus.FAILED
             scan_job.completed_at = datetime.now(UTC)
             scan_job.execution_duration = time.monotonic() - monotonic_start
-            scan_job.failure_reason = str(exc)
-            scan_job.output_file_path = (
-                str(artifact.output_path) if artifact.output_path else None
+            # Client-visible; the parser's detail is in the logs.
+            scan_job.failure_reason = _PARSE_FAILURE_REASON
+            logger.warning(
+                "Scan output could not be parsed",
+                extra={"context": {"scan_id": str(scan_id), "reason": str(exc)}},
             )
+            self._store_raw_output(scan_job, artifact.output_path)
             scan_job.stdout_log = artifact.stdout
             scan_job.stderr_log = artifact.stderr
             scan_repo.update(scan_job)
@@ -413,9 +437,7 @@ class ScanService:
 
         # Raw scanner output fields aren't known to InventoryService — attach
         # them onto the now-COMPLETED scan job separately.
-        scan_job.output_file_path = (
-            str(artifact.output_path) if artifact.output_path else None
-        )
+        self._store_raw_output(scan_job, artifact.output_path)
         scan_job.stdout_log = artifact.stdout
         scan_job.stderr_log = artifact.stderr
         scan_job.execution_duration = time.monotonic() - monotonic_start
@@ -426,17 +448,21 @@ class ScanService:
         # calculation must never undo the COMPLETED scan or the asset/service
         # inventory already committed above.
         try:
-            ai_discovery_service = AIVulnerabilityDiscoveryService(
-                session,
-                inventory_service,
-                AssetRepository(session),
-                NetworkServiceRepository(session),
-                audit_service,
-                ai_manager=self.ai_manager,
-            )
-            ai_discovery_service.discover_for_package(
-                package, scan_job.user_id, AuditContext.system()
-            )
+            ai_manager = self._ai_manager_for(session, scan_job.user_id)
+            if ai_manager is None:
+                logger.info(
+                    "AI analysis skipped: the scan owner has no AI provider key",
+                    extra={"context": {"scan_id": str(scan_id)}},
+                )
+            else:
+                AIVulnerabilityDiscoveryService(
+                    session,
+                    inventory_service,
+                    AssetRepository(session),
+                    NetworkServiceRepository(session),
+                    audit_service,
+                    ai_manager=ai_manager,
+                ).discover_for_package(package, scan_job.user_id, AuditContext.system())
         except Exception:
             logger.exception(
                 "AI vulnerability discovery failed for scan; scan results are "
@@ -459,6 +485,99 @@ class ScanService:
                 "Automatic risk calculation failed for scan",
                 extra={"scan_id": str(scan_id)},
             )
+
+    def _ai_manager_for(
+        self, session: Session, owner_id: uuid.UUID
+    ) -> AIManager | None:
+        """The AI manager for work done on behalf of `owner_id`.
+
+        Uses the injected manager when one was given (tests); otherwise the
+        owner's own saved key, or None when they have not saved one.
+        """
+        if self.ai_manager is not None:
+            return self.ai_manager
+        key = ApiKeyService(
+            session=session,
+            keys=UserApiKeyRepository(session),
+            audit_service=AuditService(AuditRepository(session)),
+            cipher=KeyCipher(self.settings.app_encryption_key.get_secret_value()),
+        ).find_decrypted_key(owner_id, AIKeyProvider.HUGGINGFACE)
+        return AIManager(self.settings, api_key=key) if key else None
+
+    def run_ai_analysis(
+        self,
+        user_id: uuid.UUID,
+        scan_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
+    ) -> int:
+        """Re-run AI vulnerability inference for a completed scan, using the
+        user's own key, then recalculate deterministic risk.
+
+        Returns the number of findings created.
+
+        Raises:
+            ConflictException: if the scan has not completed.
+            AIKeyRequiredException: if the user has no AI provider key.
+            NotFoundException: if the scan or its raw output is missing.
+        """
+        scan_job = self.get_scan(scan_id, user_id)
+        if scan_job.status != ScanStatus.COMPLETED:
+            raise ConflictException("AI analysis needs a completed scan.")
+        session = self.scan_repository.session
+        ai_manager = self._ai_manager_for(session, user_id)
+        if ai_manager is None:
+            raise AIKeyRequiredException(AIKeyProvider.HUGGINGFACE.value)
+
+        package = self._reparse_raw_output(user_id, scan_job)
+        audit_service = AuditService(AuditRepository(session))
+        inventory_service = InventoryService(
+            session,
+            AssetRepository(session),
+            VulnerabilityRepository(session),
+            self.scan_repository,
+            audit_service,
+        )
+        context = audit_context or AuditContext.system()
+        created = AIVulnerabilityDiscoveryService(
+            session,
+            inventory_service,
+            AssetRepository(session),
+            NetworkServiceRepository(session),
+            audit_service,
+            ai_manager=ai_manager,
+        ).discover_for_package(package, user_id, context)
+        RiskService(
+            session,
+            RiskRepository(session),
+            self.scan_repository,
+            AssetRepository(session),
+            ScanFindingRepository(session),
+            audit_service,
+        ).calculate_risk_for_scan(scan_id, context, owner_id=user_id)
+        return created
+
+    def _reparse_raw_output(
+        self, user_id: uuid.UUID, scan_job: ScanJob
+    ) -> AssessmentPackage:
+        """Rebuild the parsed package from the stored raw XML."""
+        chunks = self.open_raw_output(user_id, scan_job.id)
+        with tempfile.TemporaryDirectory(prefix="avap-reparse-") as tmp:
+            xml_path = Path(tmp) / "nmap.xml"
+            with xml_path.open("wb") as handle:
+                for chunk in chunks:
+                    handle.write(chunk)
+            artifact = ScanArtifact(
+                scan_id=scan_job.id,
+                scanner_type=ScannerType.NMAP,
+                execution_status=ExecutionStatus.SUCCESS,
+                output_path=xml_path,
+            )
+            try:
+                return ParserManager().parse_artifact(artifact)
+            except ParserException as exc:
+                raise NotFoundException(
+                    "The stored scan output could not be read for AI analysis."
+                ) from exc
 
     def recover_interrupted_scans(
         self, audit_context: AuditContext | None = None
@@ -585,6 +704,7 @@ class ScanService:
             raise ConflictException("Cannot delete a running scan.")
 
         scan_type = scan_job.scan_type
+        object_key = scan_job.output_object_key
         self.scan_repository.delete(scan_job)
 
         self._commit_with_audit(
@@ -593,3 +713,75 @@ class ScanService:
             context=audit_context or AuditContext.system(),
             metadata={"scan_type": scan_type},
         )
+        if object_key:
+            try:
+                self.object_storage.delete(object_key)
+            except StorageError:
+                logger.warning(
+                    "Stored scan output could not be deleted",
+                    extra={"context": {"scan_id": str(scan_id)}},
+                )
+
+    def list_hosts(
+        self, user_id: uuid.UUID, scan_id: uuid.UUID
+    ) -> Sequence[ScanHost]:
+        """Per-host detail snapshots recorded by one of the user's scans."""
+        self.get_scan(scan_id, user_id)
+        return ScanHostRepository(self.scan_repository.session).list_for_scan(scan_id)
+
+    def open_raw_output(
+        self, user_id: uuid.UUID, scan_id: uuid.UUID
+    ) -> Iterator[bytes]:
+        """Stream the raw scanner output of one of the user's scans.
+
+        Raises:
+            NotFoundException: if the scan isn't the user's or has no output.
+        """
+        scan_job = self.get_scan(scan_id, user_id)
+        try:
+            if scan_job.output_object_key:
+                return self.object_storage.open_stream(scan_job.output_object_key)
+            if scan_job.output_file_path:
+                return self._open_local_fallback(scan_job.output_file_path)
+        except StorageError as exc:
+            logger.warning(
+                "Stored scan output could not be read",
+                extra={"context": {"scan_id": str(scan_id), "reason": str(exc)}},
+            )
+        raise NotFoundException("No raw output is available for this scan.")
+
+    def _open_local_fallback(self, file_path: str) -> Iterator[bytes]:
+        """Read output kept on disk after a failed upload, but only from
+        inside the configured scanner output directory."""
+        root = self.settings.scanner_output_path.resolve()
+        candidate = Path(file_path).resolve()
+        if not candidate.is_relative_to(root) or not candidate.is_file():
+            raise StorageError("Local scan output is not available.")
+        return LocalObjectStorage(root).open_stream(
+            candidate.relative_to(root).as_posix().lower()
+        )
+
+    def _store_raw_output(self, scan_job: ScanJob, output_path: object) -> None:
+        """Upload the scanner's output file and drop the local copy.
+
+        A storage failure never fails the scan: the local path is kept so
+        the output is still downloadable, and the error is logged.
+        """
+        if not output_path:
+            return
+        local_file = Path(str(output_path))
+        if not local_file.is_file():
+            return
+        key = raw_output_key(scan_job.user_id, scan_job.id)
+        try:
+            self.object_storage.put_file(key, local_file, _RAW_OUTPUT_CONTENT_TYPE)
+        except StorageError as exc:
+            scan_job.output_file_path = str(local_file)
+            logger.warning(
+                "Raw scan output upload failed; keeping the local file",
+                extra={"context": {"scan_id": str(scan_job.id), "reason": str(exc)}},
+            )
+            return
+        scan_job.output_object_key = key
+        scan_job.output_file_path = None
+        local_file.unlink(missing_ok=True)

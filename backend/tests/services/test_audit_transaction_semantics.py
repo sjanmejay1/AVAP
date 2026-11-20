@@ -439,7 +439,7 @@ class _FakeAIManager:
         self.calls = 0
 
     def resolve_provider_name(self):
-        return "openrouter"
+        return "huggingface"
 
     def resolve_model_name(self):
         return "fake-model"
@@ -458,7 +458,7 @@ class _FakeAIManager:
                     "cautions": ["Schedule downtime."],
                 }
             ),
-            provider="openrouter",
+            provider="huggingface",
             model="fake-model",
         )
 
@@ -507,7 +507,7 @@ def test_ai_recommendation_generated_event_shares_transaction(
     events = _events(db_session, AuditEventType.AI_RECOMMENDATION_GENERATED)
     assert len(events) == 1
     assert events[0].resource_id == recommendation.id
-    assert events[0].event_metadata["provider"] == "openrouter"
+    assert events[0].event_metadata["provider"] == "huggingface"
     assert "remediation_steps" not in events[0].event_metadata
     assert "summary" not in events[0].event_metadata
 

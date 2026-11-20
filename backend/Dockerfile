@@ -56,11 +56,12 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Writable data directories (scan output, generated reports, logs).
 # Named volumes mounted here inherit this ownership on first use.
-RUN mkdir -p /data/scan_output /data/generated_reports /data/logs \
+RUN mkdir -p /data/scan_output /data/object_store /data/generated_reports /data/logs \
     && chown -R avap:avap /data /app
 
 ENV PYTHONPATH=/app \
     SCANNER_OUTPUT_DIRECTORY=/data/scan_output \
+    STORAGE_LOCAL_DIRECTORY=/data/object_store \
     REPORT_OUTPUT_DIRECTORY=/data/generated_reports \
     LOG_DIRECTORY=/data/logs \
     NMAP_EXECUTABLE=/usr/bin/nmap

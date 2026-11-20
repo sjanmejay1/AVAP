@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.audit.context import AuditContext
+from app.core.config import get_settings
+from app.core.constants import SOURCE_AI_INFERENCE
 from app.core.enums import (
     AuditEventCategory,
     AuditEventType,
@@ -16,6 +18,7 @@ from app.core.enums import (
 )
 from app.core.exceptions import NotFoundException
 from app.models.risk_assessment import RiskAssessment
+from app.models.scan_finding import ScanFinding
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.risk_repository import RiskRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
@@ -46,6 +49,7 @@ class RiskService:
         audit_service: AuditService,
     ):
         self.session = session
+        self.settings = get_settings()
         self.risk_repository = risk_repository
         self.scan_repository = scan_repository
         self.asset_repository = asset_repository
@@ -77,7 +81,11 @@ class RiskService:
         if not scan_job:
             raise NotFoundException(f"Scan job with ID {scan_id} not found.")
 
-        findings = self.scan_finding_repository.get_by_scan(scan_id)
+        findings = [
+            finding
+            for finding in self.scan_finding_repository.get_by_scan(scan_id)
+            if self._counts_toward_risk(finding)
+        ]
         calculation = calculate_scan_risk(findings)
         now = datetime.now(UTC)
 
@@ -187,6 +195,15 @@ class RiskService:
                 metadata={"failure_category": type(exc).__name__},
             )
             raise
+
+    def _counts_toward_risk(self, finding: ScanFinding) -> bool:
+        """AI-inferred findings are advisory: they only score when the owner
+        explicitly enables AI_FINDINGS_IN_RISK. The risk engine itself is
+        unchanged; this decides which findings it receives."""
+        if self.settings.ai_findings_in_risk:
+            return True
+        vulnerability = finding.vulnerability
+        return vulnerability is None or vulnerability.source != SOURCE_AI_INFERENCE
 
     def get_risk_assessments(
         self,

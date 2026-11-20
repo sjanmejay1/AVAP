@@ -4,6 +4,7 @@ All configuration originates from environment variables.
 The application fails at startup if required variables are missing.
 """
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _MIN_JWT_SECRET_LENGTH = 64
+SUPPORTED_AI_PROVIDERS = frozenset({"huggingface"})
+_HF_MODEL_PATTERN = re.compile(r"[\w.-]+/[\w.-]+(:[\w-]+)?")
 
 
 class Settings(BaseSettings):
@@ -59,8 +62,9 @@ class Settings(BaseSettings):
 
     # Scanner
     nmap_executable: str = "/usr/bin/nmap"
-    # Default outer process deadline for quick/discovery scans (seconds)
-    scan_timeout: int = Field(default=300, ge=1)
+    # Outer process deadline for QUICK scans (seconds).
+    # Formula: nmap --host-timeout 10m (600s) + 5m buffer (300s) = 900s.
+    scan_timeout: int = Field(default=900, ge=1)
     # Outer process deadline for FULL scans (seconds).
     # Formula: nmap --host-timeout 90m (5400s) + 15m buffer (900s) = 6300s.
     full_scan_timeout: int = Field(default=6300, ge=1)
@@ -68,19 +72,35 @@ class Settings(BaseSettings):
     nmap_scan_mode: str = "auto"
 
     # AI Providers
-    ai_provider: str = "openrouter"
-    ai_request_timeout_seconds: int = Field(default=30, ge=1)
+    # AI. Each user supplies their own provider key in the Profile page;
+    # there is deliberately no server-wide key setting.
+    ai_provider: str = "huggingface"
+    ai_request_timeout_seconds: int = Field(default=60, ge=1)
     ai_max_tokens: int = Field(default=1024, ge=1)
-    openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "meta-llama/llama-3.1-8b-instruct:free"
-    groq_api_key: str = ""
-    gemini_api_key: str = ""
-    huggingface_api_key: str = ""
+    # A Hugging Face model id, optionally with a routing suffix such as
+    # ":cheapest", ":fastest" or a provider name.
+    huggingface_model: str = "meta-llama/Llama-3.1-8B-Instruct"
+    # AI-inferred findings are advisory: they are shown and reported but
+    # contribute nothing to the deterministic risk score unless enabled.
+    ai_findings_in_risk: bool = False
 
     # Reporting
     report_output_directory: str = "./generated_reports"
     scanner_output_directory: str = "./scan_output"
+
+    # Raw scan output storage: "local" (a directory) or "s3" (AWS S3 or any
+    # S3-compatible endpoint). S3 credentials are read by boto3 from its
+    # standard chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or an IAM role),
+    # never from these settings.
+    storage_backend: str = "local"
+    storage_local_directory: str = "./object_store"
+    s3_bucket: str = ""
+    s3_region: str = ""
+    # Only for S3-compatible services; empty means AWS.
+    s3_endpoint_url: str = ""
+    # "AES256" (SSE-S3) or "aws:kms"; empty disables (some S3-compatible
+    # servers reject the header).
+    s3_server_side_encryption: str = "AES256"
 
     # Logging
     log_level: str = "INFO"
@@ -107,6 +127,22 @@ class Settings(BaseSettings):
             )
         return lower
 
+    @field_validator("storage_backend")
+    @classmethod
+    def validate_storage_backend(cls, value: str) -> str:
+        backend = value.strip().lower()
+        if backend not in {"local", "s3"}:
+            raise ValueError("STORAGE_BACKEND must be 'local' or 's3'.")
+        return backend
+
+    @field_validator("s3_endpoint_url")
+    @classmethod
+    def validate_s3_endpoint_url(cls, value: str) -> str:
+        url = value.strip()
+        if url and not url.startswith(("https://", "http://")):
+            raise ValueError("S3_ENDPOINT_URL must be an http(s) URL.")
+        return url
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, value: str) -> str:
@@ -124,6 +160,15 @@ class Settings(BaseSettings):
     def normalize_ai_provider(cls, value: str) -> str:
         """Normalize the configured AI provider name for case-insensitive matching."""
         return value.strip().lower()
+
+    @field_validator("huggingface_model")
+    @classmethod
+    def validate_huggingface_model(cls, value: str) -> str:
+        """A repo id ("org/name") with an optional ":suffix", nothing else."""
+        model = value.strip()
+        if not _HF_MODEL_PATTERN.fullmatch(model):
+            raise ValueError("HUGGINGFACE_MODEL must look like 'org/model[:suffix]'.")
+        return model
 
     @field_validator("environment")
     @classmethod
@@ -155,6 +200,24 @@ class Settings(BaseSettings):
                 "APP_ENCRYPTION_KEY must be a Fernet key "
                 "(32 url-safe base64-encoded bytes)."
             ) from None
+
+    def validate_ai_settings(self) -> None:
+        """Fail fast on a provider this build does not implement (for
+        example a stale AI_PROVIDER=openrouter from an older .env)."""
+        if self.ai_provider not in SUPPORTED_AI_PROVIDERS:
+            raise ValueError(
+                f"AI_PROVIDER must be one of {sorted(SUPPORTED_AI_PROVIDERS)}."
+            )
+
+    def validate_storage_settings(self) -> None:
+        """Fail fast on an incomplete S3 configuration."""
+        if self.storage_backend == "s3" and not self.s3_bucket.strip():
+            raise ValueError("S3_BUCKET is required when STORAGE_BACKEND=s3.")
+
+    @property
+    def storage_local_path(self) -> Path:
+        """Root directory of the local object store."""
+        return Path(self.storage_local_directory)
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

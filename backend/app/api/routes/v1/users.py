@@ -11,10 +11,12 @@ from app.api.dependencies.auth import (
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
 from app.core.enums import AIKeyProvider
+from app.core.exceptions import AIProviderException
 from app.models.user import User
 from app.schemas.auth import (
     ApiKeyListResponse,
     ApiKeyResponse,
+    ApiKeyTestResponse,
     ChangePasswordRequest,
     SaveApiKeyRequest,
 )
@@ -68,6 +70,24 @@ def save_api_key(
 ) -> dict:
     stored = service.save_key(current_user.id, provider, body.api_key, context)
     return {"data": ApiKeyResponse.model_validate(stored)}
+
+
+@router.post(
+    "/me/api-keys/{provider}/test",
+    response_model=SuccessResponse[ApiKeyTestResponse],
+    summary="Check a saved key with one minimal provider call",
+)
+def test_api_key(
+    provider: AIKeyProvider,
+    current_user: User = Depends(get_current_user),
+    service: ApiKeyService = Depends(get_api_key_service),
+) -> dict:
+    """Spends a negligible amount of the user's inference credit."""
+    try:
+        service.test_key(current_user.id, provider)
+    except AIProviderException as exc:
+        return {"data": ApiKeyTestResponse(valid=False, message=exc.message)}
+    return {"data": ApiKeyTestResponse(valid=True, message="The key works.")}
 
 
 @router.delete(

@@ -29,6 +29,51 @@ _PRIVILEGE_ERROR_MARKERS = [
 ]
 
 
+# FULL runs NSE scripts that are safe and stay on the target: "broadcast"
+# scripts would probe the whole local network and "external" scripts send
+# data to third-party services, so both are excluded.
+FULL_SCRIPT_SELECTION = (
+    "(default or vuln or discovery) and safe and not (broadcast or external)"
+)
+
+_COMMON_TAIL = ["-Pn", "-T4", "--stats-every", "30s"]
+_QUICK_COMMON = [
+    "-sV",
+    "--version-light",
+    "--top-ports",
+    "1000",
+    "--max-retries",
+    "1",
+    "--host-timeout",
+    "10m",
+    *_COMMON_TAIL,
+]
+_FULL_COMMON = [
+    "-sV",
+    "--version-intensity",
+    "7",
+    "--script",
+    FULL_SCRIPT_SELECTION,
+    "-p-",
+    "--max-retries",
+    "2",
+    "--host-timeout",
+    "90m",
+    *_COMMON_TAIL,
+]
+
+# Raw-socket variants: SYN scan plus OS detection.
+_PRIVILEGED_FLAGS: dict[ScanProfile, list[str]] = {
+    ScanProfile.QUICK: ["-sS", "-O", "--osscan-limit", *_QUICK_COMMON],
+    ScanProfile.FULL: ["-sS", "-O", "--osscan-guess", "--traceroute", *_FULL_COMMON],
+}
+# Fallbacks without raw sockets: TCP connect scan, no OS detection/traceroute.
+_UNPRIVILEGED_FLAGS: dict[ScanProfile, list[str]] = {
+    ScanProfile.QUICK: ["-sT", *_QUICK_COMMON],
+    ScanProfile.FULL: ["-sT", *_FULL_COMMON],
+}
+
+
 def detect_privileged_mode(settings=None) -> bool:
     """Detect whether Nmap has the privileges required for raw-socket features.
 
@@ -177,7 +222,7 @@ class NmapAdapter(BaseScannerAdapter):
             target: The normalized target IP/hostname/CIDR.
             scan_profile: The ScanProfile enum value.
             output_path: The file path where the scanner should write its XML output.
-            force_privileged: Optional override for privileged mode in FULL profile.
+            force_privileged: Optional override for privileged mode detection.
 
         Returns:
             A list of command-line arguments starting with the Nmap executable.
@@ -191,71 +236,22 @@ class NmapAdapter(BaseScannerAdapter):
 
         args = [executable]
 
-        # Configure scan options based on profile
-        if scan_profile == ScanProfile.DISCOVERY:
-            args.extend(["-sn"])  # Ping scan (no port scan)
-        elif scan_profile == ScanProfile.PORT_SCAN:
-            args.extend(["-sT", "-F"])  # TCP Connect scan, Fast mode
-        elif scan_profile == ScanProfile.FULL:
-            is_priv = (
-                force_privileged
-                if force_privileged is not None
-                else detect_privileged_mode(self.settings)
-            )
-
-            if is_priv:
-                priv_flags = []
-                if _needs_privileged_flag():
-                    priv_flags.append("--privileged")
-                priv_flags.extend(
-                    [
-                        "-sS",
-                        "-sV",
-                        "-O",
-                        "--osscan-guess",
-                        "-sC",
-                        "--traceroute",
-                        "-p-",
-                        "-Pn",
-                        "-T4",
-                        "--version-intensity",
-                        "7",
-                        "--max-retries",
-                        "2",
-                        "--host-timeout",
-                        "90m",
-                        "--stats-every",
-                        "30s",
-                    ]
-                )
-                args.extend(priv_flags)
-            else:
-                logger.warning(
-                    "Executing FULL scan in unprivileged mode: "
-                    "OS detection and SYN scan unavailable. "
-                    "Falling back to -sT."
-                )
-                args.extend(
-                    [
-                        "-sT",
-                        "-sV",
-                        "-sC",
-                        "-p-",
-                        "-Pn",
-                        "-T4",
-                        "--version-intensity",
-                        "7",
-                        "--max-retries",
-                        "2",
-                        "--host-timeout",
-                        "90m",
-                        "--stats-every",
-                        "30s",
-                    ]
-                )
+        is_priv = (
+            force_privileged
+            if force_privileged is not None
+            else detect_privileged_mode(self.settings)
+        )
+        if is_priv:
+            if _needs_privileged_flag():
+                args.append("--privileged")
+            args.extend(_PRIVILEGED_FLAGS[scan_profile])
         else:
-            # Fallback/default if unrecognized
-            args.extend(["-sT"])
+            logger.warning(
+                "Running nmap unprivileged: SYN scan and OS detection are "
+                "unavailable, using a TCP connect scan.",
+                extra={"context": {"profile": scan_profile.value}},
+            )
+            args.extend(_UNPRIVILEGED_FLAGS[scan_profile])
 
         # Output to XML file
         args.extend(["-oX", output_path])
@@ -289,18 +285,13 @@ class NmapAdapter(BaseScannerAdapter):
         filename = f"nmap_{scan_id}.xml"
         output_path = output_dir / filename
 
-        is_privileged = (
-            detect_privileged_mode(self.settings)
-            if scan_profile == ScanProfile.FULL
-            else False
-        )
+        is_privileged = detect_privileged_mode(self.settings)
         cmd_args = self.build_command(
             target, scan_profile, str(output_path), force_privileged=is_privileged
         )
 
-        # Determine outer timeout based on scan profile:
-        # Full scans get extended timeout (90m host-timeout + 15m buffer = 6300s);
-        # other profiles retain the standard default timeout (300s).
+        # Outer process deadline per profile: nmap's own --host-timeout plus a
+        # buffer (FULL: 90m + 15m = 6300s; QUICK: 10m + 5m = 900s).
         exec_timeout = (
             self.settings.full_scan_timeout
             if scan_profile == ScanProfile.FULL
@@ -320,7 +311,6 @@ class NmapAdapter(BaseScannerAdapter):
             if (
                 artifact.exit_code != 0
                 and is_privileged
-                and scan_profile == ScanProfile.FULL
                 and _is_privilege_error(artifact.stderr)
             ):
                 logger.warning(

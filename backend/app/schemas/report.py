@@ -94,6 +94,46 @@ class AssetSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class ReportServiceDetail(BaseModel):
+    """One port as Nmap reported it in this scan."""
+
+    port: int = Field(..., ge=0, le=65535)
+    protocol: str = Field(..., max_length=10)
+    state: str = Field(..., max_length=30)
+    service_name: str = Field(..., max_length=50)
+    product: str | None = Field(None, max_length=100)
+    version: str | None = Field(None, max_length=50)
+    scripts: dict[str, str] = Field(default_factory=dict)
+
+
+class HostReport(BaseModel):
+    """Everything one scan observed about one host."""
+
+    ipv4: str = Field(..., max_length=45)
+    hostname: str | None = Field(None, max_length=253)
+    operating_system: str | None = Field(None, max_length=253)
+    os_matches: list[str] = Field(default_factory=list)
+    mac_address: str | None = None
+    mac_vendor: str | None = None
+    uptime_seconds: int | None = None
+    network_distance: int | None = None
+    traceroute: list[str] = Field(default_factory=list)
+    closed_port_count: int = 0
+    filtered_port_count: int = 0
+    services: list[ReportServiceDetail] = Field(default_factory=list)
+
+
+class AdvisoryFinding(BaseModel):
+    """An AI-inferred, unverified finding. Not part of the risk score."""
+
+    vulnerability_name: str = Field(..., max_length=200)
+    cve: str | None = Field(None, max_length=20)
+    severity_rating: str = Field(..., max_length=20)
+    description: str | None = Field(None, max_length=3000)
+    asset_ipv4: str = Field(..., max_length=45)
+    affected_service: AffectedService | None = None
+
+
 class ReportMetadata(BaseModel):
     """Point-in-time generation context for one report."""
 
@@ -106,6 +146,7 @@ class ReportMetadata(BaseModel):
     generated_at: datetime
     report_template_version: str = Field(..., max_length=20)
     risk_calculation_version: str = Field(..., max_length=20)
+    scan_profile: str = Field("FULL", max_length=50)
 
     model_config = ConfigDict(frozen=True)
 
@@ -123,6 +164,8 @@ class ReportData(BaseModel):
     executive_summary: ExecutiveSummary
     assets: list[AssetSummary]
     findings: list[FindingDetail]
+    hosts: list[HostReport] = Field(default_factory=list)
+    advisory_findings: list[AdvisoryFinding] = Field(default_factory=list)
 
     model_config = ConfigDict(frozen=True)
 

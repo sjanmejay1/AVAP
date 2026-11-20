@@ -15,7 +15,7 @@ class CreateScanRequest(BaseModel):
     )
     scan_profile: str = Field(
         default="full",
-        description="The type or profile of the scan (e.g., 'full', 'quick').",
+        description="Scan mode: 'QUICK' (top 1000 ports) or 'FULL' (all ports).",
         max_length=50,
     )
     priority: str = Field(
@@ -68,6 +68,12 @@ class ScanListResponse(BaseModel):
 
     scans: list[ScanResponse]
     total: int
+
+
+class AIAnalysisResponse(BaseModel):
+    """Result of re-running AI analysis for a scan."""
+
+    findings_created: int
 
 
 class ScanStatusResponse(BaseModel):

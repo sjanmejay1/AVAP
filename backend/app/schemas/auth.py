@@ -90,3 +90,8 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyListResponse(BaseModel):
     keys: list[ApiKeyResponse]
+
+
+class ApiKeyTestResponse(BaseModel):
+    valid: bool
+    message: str

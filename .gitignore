@@ -18,3 +18,7 @@ audit/
 .ruff_cache/
 .mypy_cache/
 .uv_env/
+
+# Raw scan output and the local object store (may contain sensitive data)
+scan_output/
+object_store/

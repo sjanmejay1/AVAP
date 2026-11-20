@@ -10,6 +10,9 @@ from app.scanners.scanner_factory import ScannerFactory
 
 logger = logging.getLogger(__name__)
 
+_QUICK_ALIASES = {"QUICK", "FAST", "DISCOVERY", "PING", "PORT_SCAN", "PORT", "PORTS"}
+_FULL_ALIASES = {"FULL", "DEEP", "ALL"}
+
 
 def resolve_scan_profile(scan_profile: str) -> ScanProfile:
     """Map a case-insensitive profile identifier to the ScanProfile enum.
@@ -25,13 +28,10 @@ def resolve_scan_profile(scan_profile: str) -> ScanProfile:
     """
     norm_profile = scan_profile.strip().upper()
 
-    # Also map common alternate spellings/cases if needed
-    # e.g., 'PING' -> 'DISCOVERY'
-    if norm_profile in ["DISCOVERY", "PING", "PING_SCAN"]:
-        return ScanProfile.DISCOVERY
-    elif norm_profile in ["PORT_SCAN", "PORT", "PORTS", "FAST"]:
-        return ScanProfile.PORT_SCAN
-    elif norm_profile in ["FULL", "DEEP", "ALL"]:
+    # Older profile names from earlier API versions map to QUICK.
+    if norm_profile in _QUICK_ALIASES:
+        return ScanProfile.QUICK
+    if norm_profile in _FULL_ALIASES:
         return ScanProfile.FULL
 
     try:

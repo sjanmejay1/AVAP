@@ -48,18 +48,29 @@ services:
       # Auth secrets: no defaults, the backend refuses to start without them.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY in .env}
-      SCAN_TIMEOUT: ${SCAN_TIMEOUT:-300}
+      # Raw scan output: "local" (the avap_objects volume) or "s3".
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_SERVER_SIDE_ENCRYPTION: ${S3_SERVER_SIDE_ENCRYPTION:-AES256}
+      # Read by boto3 directly (or use an IAM role and leave these empty).
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      SCAN_TIMEOUT: ${SCAN_TIMEOUT:-900}
       NMAP_SCAN_MODE: ${NMAP_SCAN_MODE:-auto}
-      AI_PROVIDER: openrouter
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
-      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-30}
+      # Users supply their own Hugging Face tokens in the app.
+      AI_PROVIDER: huggingface
+      HUGGINGFACE_MODEL: ${HUGGINGFACE_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      AI_FINDINGS_IN_RISK: ${AI_FINDINGS_IN_RISK:-false}
+      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-60}
       AI_MAX_TOKENS: ${AI_MAX_TOKENS:-1024}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Data directories are fixed inside the image (/data/...) — see
       # backend/Dockerfile. They persist via the named volumes below.
     volumes:
       - avap_scan_output:/data/scan_output
+      - avap_objects:/data/object_store
       - avap_reports:/data/generated_reports
       - avap_logs:/data/logs
     ports:
@@ -84,5 +95,6 @@ services:
 volumes:
   avap_pgdata:
   avap_scan_output:
+  avap_objects:
   avap_reports:
   avap_logs:
