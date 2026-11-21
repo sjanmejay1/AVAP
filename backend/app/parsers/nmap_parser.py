@@ -7,7 +7,13 @@ from pathlib import Path
 from app.core.enums import ScannerType
 from app.core.exceptions import ParserException
 from app.parsers.base_parser import BaseParser
-from app.parsers.models import AssessmentPackage, ParsedHost, ParsedService
+from app.parsers.models import (
+    AssessmentPackage,
+    ParsedHost,
+    ParsedService,
+    ParsedVulnerability,
+)
+from app.parsers.nse_vulns import extract_vulnerabilities
 from app.scanners.scan_artifact import ScanArtifact
 
 logger = logging.getLogger(__name__)
@@ -251,11 +257,17 @@ class NmapParser(BaseParser):
 
                     # Script outputs per port
                     scripts: dict[str, str] = {}
+                    port_vulnerabilities: list[ParsedVulnerability] = []
                     for script_node in port_node.findall("script"):
                         script_id = script_node.get("id", "")
                         script_output = script_node.get("output", "")
                         if script_id:
                             scripts[script_id] = _sanitize_script_output(script_output)
+                        port_vulnerabilities.extend(
+                            extract_vulnerabilities(
+                                script_node, port_id, protocol.lower()
+                            )
+                        )
 
                     # Merge script output into extra_info for DB storage
                     if scripts:
@@ -277,11 +289,20 @@ class NmapParser(BaseParser):
                             product=product,
                             version=version,
                             extra_info=extra_info,
-                            vulnerabilities=[],
+                            vulnerabilities=port_vulnerabilities,
                             state=port_state,
                             cpes=cpes,
                             scripts=scripts,
                         )
+                    )
+
+            # Host-level scripts (e.g. SMB checks) report under <hostscript>.
+            host_vulnerabilities: list[ParsedVulnerability] = []
+            hostscript_node = host_node.find("hostscript")
+            if hostscript_node is not None:
+                for script_node in hostscript_node.findall("script"):
+                    host_vulnerabilities.extend(
+                        extract_vulnerabilities(script_node, None, None)
                     )
 
             parsed_hosts.append(
@@ -300,6 +321,7 @@ class NmapParser(BaseParser):
                     traceroute_hops=traceroute_hops,
                     closed_port_count=closed_port_count,
                     filtered_port_count=filtered_port_count,
+                    host_vulnerabilities=host_vulnerabilities,
                 )
             )
 

@@ -24,7 +24,7 @@ Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · np
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
 
 
-Quality bar to match: 641 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (Phases C+D, 2026-11-20). Run pytest with DATABASE_URL=sqlite:// as a safety net.
+Quality bar to match: 648 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (NSE findings, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 

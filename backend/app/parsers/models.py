@@ -102,6 +102,10 @@ class ParsedHost(BaseModel):
     filtered_port_count: int = Field(
         0, description="Number of filtered ports (from extraports)"
     )
+    host_vulnerabilities: list[ParsedVulnerability] = Field(
+        default_factory=list,
+        description="Vulnerabilities reported by host-level NSE scripts",
+    )
 
 
 class AssessmentPackage(BaseModel):

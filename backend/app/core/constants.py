@@ -16,6 +16,10 @@ HOSTNAME_MAX_LENGTH: int = 253
 CIDR_MIN_PREFIX_IPV4: int = 8
 CIDR_MAX_PREFIX_IPV4: int = 32
 
+# Vulnerability.source value for findings confirmed by an Nmap NSE
+# vulnerability script (scanner evidence; counts toward risk).
+SOURCE_NMAP_NSE: str = "NMAP_NSE"
+
 # Vulnerability.source value for findings inferred by the AI provider.
 # These are advisory and excluded from deterministic risk scoring unless
 # AI_FINDINGS_IN_RISK is enabled.

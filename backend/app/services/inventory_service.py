@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.context import AuditContext
+from app.core.constants import SOURCE_NMAP_NSE
 from app.core.enums import (
     AuditEventCategory,
     AuditEventType,
@@ -266,6 +267,18 @@ class InventoryService:
                         service_id=None,
                     )
 
+                # Host-level script findings have no service.
+                for parsed_vuln in host.host_vulnerabilities:
+                    vuln = self.upsert_vulnerability(
+                        parsed_vuln, source=SOURCE_NMAP_NSE
+                    )
+                    self.link_finding(
+                        scan_id=package.scan_id,
+                        asset_id=asset.id,
+                        vulnerability_id=vuln.id,
+                        service_id=None,
+                    )
+
                 # Process services for this host
                 for parsed_service in host.services:
                     # 3. Upsert NetworkService
@@ -275,7 +288,9 @@ class InventoryService:
                     if parsed_service.vulnerabilities:
                         for parsed_vuln in parsed_service.vulnerabilities:
                             # 4. Upsert Vulnerability
-                            vuln = self.upsert_vulnerability(parsed_vuln)
+                            vuln = self.upsert_vulnerability(
+                                parsed_vuln, source=SOURCE_NMAP_NSE
+                            )
 
                             # 5. Create ScanFinding linking scan, asset, vuln, service
                             self.link_finding(
