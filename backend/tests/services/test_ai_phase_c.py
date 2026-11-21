@@ -1,4 +1,4 @@
-"""Phase C/D: per-user Hugging Face key, advisory AI findings excluded from
+"""Phase C/D: per-user OpenRouter key, advisory AI findings excluded from
 risk, prompt data minimization, AI re-run, key test, and reports that work
 without scored findings."""
 
@@ -56,13 +56,13 @@ class _RecordingAIManager(AIManager):
     """Returns one canned finding and records every prompt it was sent."""
 
     def __init__(self) -> None:
-        super().__init__(settings=Settings(_env_file=None), api_key="hf_fake")
+        super().__init__(settings=Settings(_env_file=None), api_key="sk-or-fake")
         self.prompts: list = []
 
     def generate(self, prompt):
         self.prompts.append(prompt)
         return AIProviderResponse(
-            content=json.dumps(AI_FINDING), provider="huggingface", model="m"
+            content=json.dumps(AI_FINDING), provider="openrouter", model="m"
         )
 
 
@@ -128,26 +128,26 @@ class TestAdvisoryAI:
 
 class TestPerUserKey:
     def test_scan_without_a_saved_key_skips_ai_and_completes(self, db_session):
-        with patch("app.ai.providers.huggingface.httpx.post") as post:
+        with patch("app.ai.providers.openrouter.httpx.request") as post:
             _completed_scan(db_session, _scan_service(db_session, ai_manager=None))
         post.assert_not_called()
         assert _ai_vulnerabilities(db_session) == []
 
     def test_scan_uses_the_owners_saved_key(self, db_session, client):
         client.put(
-            "/api/v1/users/me/api-keys/huggingface", json={"api_key": "hf_owner_key1"}
+            "/api/v1/users/me/api-keys/openrouter", json={"api_key": "sk-or-owner-key1"}
         )
         reply = MagicMock(status_code=200)
         reply.json.return_value = {
             "choices": [{"message": {"content": json.dumps(AI_FINDING)}}]
         }
         with patch(
-            "app.ai.providers.huggingface.httpx.post", return_value=reply
+            "app.ai.providers.openrouter.httpx.request", return_value=reply
         ) as post:
             _completed_scan(db_session, _scan_service(db_session, ai_manager=None))
 
         assert post.call_args.kwargs["headers"]["Authorization"] == (
-            "Bearer hf_owner_key1"
+            "Bearer sk-or-owner-key1"
         )
         assert len(_ai_vulnerabilities(db_session)) == 1
 
@@ -191,7 +191,7 @@ class TestAIRerun:
 
 class TestKeyCheck:
     def test_key_test_without_a_key_is_409(self, client):
-        response = client.post("/api/v1/users/me/api-keys/huggingface/test")
+        response = client.post("/api/v1/users/me/api-keys/openrouter/test")
         assert response.status_code == 409
 
     @pytest.mark.parametrize(
@@ -199,21 +199,21 @@ class TestKeyCheck:
     )
     def test_key_test_reports_validity(self, client, status, valid):
         client.put(
-            "/api/v1/users/me/api-keys/huggingface", json={"api_key": "hf_check_key1"}
+            "/api/v1/users/me/api-keys/openrouter", json={"api_key": "sk-or-check-key1"}
         )
         reply = MagicMock(status_code=status)
         reply.json.return_value = {"choices": [{"message": {"content": "x"}}]}
-        with patch("app.ai.providers.huggingface.httpx.post", return_value=reply):
-            response = client.post("/api/v1/users/me/api-keys/huggingface/test")
+        with patch("app.ai.providers.openrouter.httpx.request", return_value=reply):
+            response = client.post("/api/v1/users/me/api-keys/openrouter/test")
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["valid"] is valid
-        assert "hf_check_key1" not in response.text
+        assert "sk-or-check-key1" not in response.text
 
 
 def test_stale_ai_provider_fails_at_startup():
     with pytest.raises(ValueError, match="AI_PROVIDER"):
-        Settings(_env_file=None, ai_provider="openrouter").validate_ai_settings()
+        Settings(_env_file=None, ai_provider="huggingface").validate_ai_settings()
     Settings(_env_file=None).validate_ai_settings()
 
 
@@ -221,7 +221,7 @@ def test_find_decrypted_key_returns_none_without_a_key(db_session):
     from app.api.dependencies.auth import get_api_key_service
 
     service = get_api_key_service(db_session)
-    assert service.find_decrypted_key(TEST_USER_ID, AIKeyProvider.HUGGINGFACE) is None
+    assert service.find_decrypted_key(TEST_USER_ID, AIKeyProvider.OPENROUTER) is None
 
 
 class TestReportWithoutScoredFindings:

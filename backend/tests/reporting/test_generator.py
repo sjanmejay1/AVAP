@@ -41,14 +41,14 @@ class _FakeAIManager(AIManager):
         )
 
     def resolve_provider_name(self):
-        return "huggingface"
+        return "openrouter"
 
     def resolve_model_name(self):
         return "fake-model"
 
     def generate(self, prompt):
         return AIProviderResponse(
-            content=self.content, provider="huggingface", model="fake-model"
+            content=self.content, provider="openrouter", model="fake-model"
         )
 
 
@@ -206,7 +206,7 @@ def test_build_report_data_includes_current_ai_recommendation(db_session):
 
     remediation = report_data.findings[0].remediation
     assert remediation is not None
-    assert remediation.provider == "huggingface"
+    assert remediation.provider == "openrouter"
     assert remediation.remediation_steps == ["Apply the vendor patch."]
 
 

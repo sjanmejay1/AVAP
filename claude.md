@@ -11,7 +11,7 @@ Stack
 Backend (backend/): Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL, Pydantic v2, ReportLab, pytest (SQLite in-memory).
 Frontend (frontend/): Next.js App Router, TypeScript, TanStack Query, Zustand, shadcn/ui + Tailwind, React Hook Form + Zod, Vitest.
 Scanners: Nmap only, QUICK and FULL profiles (OpenVAS stub removed 2026-11-20). Raw output goes to object storage (local or S3, app/storage/).
-AI: Hugging Face only (app/ai/providers/huggingface.py), called with each user's own encrypted key; no server-wide key. AI findings are advisory and excluded from risk unless AI_FINDINGS_IN_RISK=true.
+AI: OpenRouter only, FREE models only (app/ai/providers/openrouter.py; OPENROUTER_MODEL must end in ':free' or be 'openrouter/free'), called with each user's own encrypted key; no server-wide key. AI findings are advisory and excluded from risk unless AI_FINDINGS_IN_RISK=true.
 
 
 Commands
@@ -24,7 +24,7 @@ Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · np
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
 
 
-Quality bar to match: 648 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (NSE findings, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
+Quality bar to match: 657 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (OpenRouter free-only, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 

@@ -34,7 +34,7 @@ def get_ai_service(
     api_keys: ApiKeyService = Depends(get_api_key_service),
 ) -> AIService:
     """AIService whose provider calls use the caller's own saved key."""
-    api_key = api_keys.find_decrypted_key(current_user.id, AIKeyProvider.HUGGINGFACE)
+    api_key = api_keys.find_decrypted_key(current_user.id, AIKeyProvider.OPENROUTER)
     return AIService(
         session=db,
         ai_recommendation_repository=AIRecommendationRepository(db),

@@ -183,7 +183,7 @@ def run_ai_analysis(
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """AI findings are advisory and excluded from the risk score by default.
-    Returns 409 AI_KEY_REQUIRED when no Hugging Face key is saved."""
+    Returns 409 AI_KEY_REQUIRED when no OpenRouter key is saved."""
     created = service.run_ai_analysis(
         current_user.id, scan_id, audit_context=audit_context
     )

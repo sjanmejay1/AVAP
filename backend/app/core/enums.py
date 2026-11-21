@@ -174,4 +174,4 @@ class AuditResourceType(str, enum.Enum):
 class AIKeyProvider(str, enum.Enum):
     """AI providers a user can store a key for."""
 
-    HUGGINGFACE = "huggingface"
+    OPENROUTER = "openrouter"

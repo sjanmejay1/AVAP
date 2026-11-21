@@ -42,7 +42,7 @@ class _FakeProviderBoundaryManager(AIManager):
         self.calls = 0
 
     def resolve_provider_name(self):
-        return "huggingface"
+        return "openrouter"
 
     def resolve_model_name(self):
         return "fake-integration-model"
@@ -57,7 +57,7 @@ class _FakeProviderBoundaryManager(AIManager):
             '"cautions": ["Restart sshd during a maintenance window."]}'
         )
         return AIProviderResponse(
-            content=content, provider="huggingface", model="fake-integration-model"
+            content=content, provider="openrouter", model="fake-integration-model"
         )
 
 

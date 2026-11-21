@@ -7,7 +7,7 @@ server-wide fallback key.
 """
 
 from app.ai.provider import AIProviderInterface, AIProviderResponse, Prompt
-from app.ai.providers.huggingface import HuggingFaceProvider
+from app.ai.providers.openrouter import OpenRouterProvider
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AIKeyRequiredException, UnsupportedProviderException
 
@@ -15,10 +15,10 @@ from app.core.exceptions import AIKeyRequiredException, UnsupportedProviderExcep
 # Adding a provider requires only a new entry here and a new adapter under
 # app/ai/providers/, with no change to business logic.
 _PROVIDER_REGISTRY: dict[str, type[AIProviderInterface]] = {
-    "huggingface": HuggingFaceProvider,
+    "openrouter": OpenRouterProvider,
 }
 _PROVIDER_MODEL_SETTING: dict[str, str] = {
-    "huggingface": "huggingface_model",
+    "openrouter": "openrouter_model",
 }
 
 

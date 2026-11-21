@@ -13,8 +13,10 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _MIN_JWT_SECRET_LENGTH = 64
-SUPPORTED_AI_PROVIDERS = frozenset({"huggingface"})
-_HF_MODEL_PATTERN = re.compile(r"[\w.-]+/[\w.-]+(:[\w-]+)?")
+SUPPORTED_AI_PROVIDERS = frozenset({"openrouter"})
+_MODEL_ID_PATTERN = re.compile(r"[\w.-]+/[\w.-]+(:[\w-]+)?")
+# OpenRouter's router that only ever picks among free models.
+FREE_ROUTER_MODEL = "openrouter/free"
 
 
 class Settings(BaseSettings):
@@ -74,12 +76,16 @@ class Settings(BaseSettings):
     # AI Providers
     # AI. Each user supplies their own provider key in the Profile page;
     # there is deliberately no server-wide key setting.
-    ai_provider: str = "huggingface"
+    ai_provider: str = "openrouter"
     ai_request_timeout_seconds: int = Field(default=60, ge=1)
     ai_max_tokens: int = Field(default=1024, ge=1)
-    # A Hugging Face model id, optionally with a routing suffix such as
-    # ":cheapest", ":fastest" or a provider name.
-    huggingface_model: str = "meta-llama/Llama-3.1-8B-Instruct"
+    # Free models only: an id ending in ":free", or "openrouter/free" (a
+    # router that picks among free models). Anything else is refused.
+    openrouter_model: str = "google/gemma-4-31b-it:free"
+    # OpenRouter provider.data_collection: "allow" or "deny". "deny" keeps
+    # requests off providers that store or train on prompts, but can leave
+    # no free provider available for a model.
+    openrouter_data_collection: str = "allow"
     # AI-inferred findings are advisory: they are shown and reported but
     # contribute nothing to the deterministic risk score unless enabled.
     ai_findings_in_risk: bool = False
@@ -161,14 +167,28 @@ class Settings(BaseSettings):
         """Normalize the configured AI provider name for case-insensitive matching."""
         return value.strip().lower()
 
-    @field_validator("huggingface_model")
+    @field_validator("openrouter_model")
     @classmethod
-    def validate_huggingface_model(cls, value: str) -> str:
-        """A repo id ("org/name") with an optional ":suffix", nothing else."""
+    def validate_openrouter_model(cls, value: str) -> str:
+        """Only free models: "<org>/<model>:free" or the free router."""
         model = value.strip()
-        if not _HF_MODEL_PATTERN.fullmatch(model):
-            raise ValueError("HUGGINGFACE_MODEL must look like 'org/model[:suffix]'.")
+        is_free_variant = _MODEL_ID_PATTERN.fullmatch(model) and model.endswith(
+            ":free"
+        )
+        if model != FREE_ROUTER_MODEL and not is_free_variant:
+            raise ValueError(
+                "OPENROUTER_MODEL must be a free model: an id ending in ':free' "
+                f"or '{FREE_ROUTER_MODEL}'."
+            )
         return model
+
+    @field_validator("openrouter_data_collection")
+    @classmethod
+    def validate_openrouter_data_collection(cls, value: str) -> str:
+        policy = value.strip().lower()
+        if policy not in {"allow", "deny"}:
+            raise ValueError("OPENROUTER_DATA_COLLECTION must be 'allow' or 'deny'.")
+        return policy
 
     @field_validator("environment")
     @classmethod

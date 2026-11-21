@@ -59,9 +59,10 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       SCAN_TIMEOUT: ${SCAN_TIMEOUT:-900}
       NMAP_SCAN_MODE: ${NMAP_SCAN_MODE:-auto}
-      # Users supply their own Hugging Face tokens in the app.
-      AI_PROVIDER: huggingface
-      HUGGINGFACE_MODEL: ${HUGGINGFACE_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      # Users supply their own OpenRouter keys in the app; free models only.
+      AI_PROVIDER: openrouter
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}
+      OPENROUTER_DATA_COLLECTION: ${OPENROUTER_DATA_COLLECTION:-allow}
       AI_FINDINGS_IN_RISK: ${AI_FINDINGS_IN_RISK:-false}
       AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-60}
       AI_MAX_TOKENS: ${AI_MAX_TOKENS:-1024}

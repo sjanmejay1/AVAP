@@ -35,7 +35,7 @@ from tests.auth_helpers import TEST_USER_ID
 
 class _FakeProviderBoundaryManager(AIManager):
     def resolve_provider_name(self):
-        return "huggingface"
+        return "openrouter"
 
     def resolve_model_name(self):
         return "fake-integration-model"
@@ -49,7 +49,7 @@ class _FakeProviderBoundaryManager(AIManager):
             '"cautions": ["Restart during a maintenance window."]}'
         )
         return AIProviderResponse(
-            content=content, provider="huggingface", model="fake-integration-model"
+            content=content, provider="openrouter", model="fake-integration-model"
         )
 
 
@@ -259,7 +259,7 @@ def test_full_lifecycle_produces_expected_audit_trail(
     ai_event = next(
         e for e in all_events if e["event_type"] == "AI_RECOMMENDATION_GENERATED"
     )
-    assert ai_event["event_metadata"]["provider"] == "huggingface"
+    assert ai_event["event_metadata"]["provider"] == "openrouter"
     assert ai_event["event_metadata"]["prompt_version"]
     for forbidden_key in (
         "summary",

@@ -137,7 +137,7 @@ def test_api_keys_are_per_user_and_write_only(anonymous_client, two_users, db_se
     alice, bob = two_users["alice"], two_users["bob"]
     secret = "hf_SECRETVALUE1234abcd"
     saved = anonymous_client.put(
-        "/api/v1/users/me/api-keys/huggingface",
+        "/api/v1/users/me/api-keys/openrouter",
         json={"api_key": secret},
         headers=alice,
     )
@@ -156,13 +156,13 @@ def test_api_keys_are_per_user_and_write_only(anonymous_client, two_users, db_se
 
     assert (
         anonymous_client.delete(
-            "/api/v1/users/me/api-keys/huggingface", headers=bob
+            "/api/v1/users/me/api-keys/openrouter", headers=bob
         ).status_code
         == 404
     )
     assert (
         anonymous_client.delete(
-            "/api/v1/users/me/api-keys/huggingface", headers=alice
+            "/api/v1/users/me/api-keys/openrouter", headers=alice
         ).status_code
         == 204
     )

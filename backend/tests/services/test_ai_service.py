@@ -42,7 +42,7 @@ class FakeAIManager(AIManager):
     """Test double at the AI Manager boundary — not a mock of AIService itself."""
 
     def __init__(
-        self, content=None, provider="huggingface", model="fake-model", exc=None
+        self, content=None, provider="openrouter", model="fake-model", exc=None
     ):
         self.content = content if content is not None else json.dumps(VALID_OUTPUT)
         self.provider = provider

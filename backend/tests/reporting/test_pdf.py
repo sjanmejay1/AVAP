@@ -101,7 +101,7 @@ def _remediation(**overrides):
         "remediation_steps": ["Apply the vendor patch.", "Restart the service."],
         "validation_steps": ["Confirm the version banner updated."],
         "cautions": ["Perform during a maintenance window."],
-        "provider": "huggingface",
+        "provider": "openrouter",
         "model": "test-model",
         "generated_at": datetime.now(UTC),
     }

@@ -75,7 +75,7 @@ def _upsert_kwargs(vulnerability, risk_assessment, **overrides):
     defaults = {
         "vulnerability_id": vulnerability.id,
         "risk_assessment_id": risk_assessment.id,
-        "provider": "huggingface",
+        "provider": "openrouter",
         "model": "test-model",
         "prompt_version": "1.0.0",
         "summary": "Summary",
@@ -215,7 +215,7 @@ def test_find_identity_record_matches_exact_combination(
     repository.upsert(**_upsert_kwargs(vulnerability, risk_assessment))
     found = repository.find_identity_record(
         risk_assessment_id=risk_assessment.id,
-        provider="huggingface",
+        provider="openrouter",
         model="test-model",
         prompt_version="1.0.0",
     )

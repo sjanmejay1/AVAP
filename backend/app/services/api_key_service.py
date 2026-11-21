@@ -59,7 +59,12 @@ class ApiKeyService:
         return stored
 
     def list_keys(self, user_id: uuid.UUID) -> Sequence[UserApiKey]:
-        return self.keys.list_for_user(user_id)
+        """The user's keys for currently supported providers only; a key
+        saved for a retired provider stays stored but is not listed."""
+        supported = {provider.value for provider in AIKeyProvider}
+        return [
+            key for key in self.keys.list_for_user(user_id) if key.provider in supported
+        ]
 
     def delete_key(
         self, user_id: uuid.UUID, provider: AIKeyProvider, context: AuditContext

@@ -10,8 +10,10 @@ os.environ["JWT_SECRET_KEY"] = "test-only-jwt-secret-" + "0" * 64
 os.environ["APP_ENCRYPTION_KEY"] = base64.urlsafe_b64encode(b"t" * 32).decode()
 # Raw scan output from tests goes to a throwaway directory, never S3.
 os.environ["STORAGE_BACKEND"] = "local"
-# A developer's .env may still name a retired AI provider.
-os.environ["AI_PROVIDER"] = "huggingface"
+# A developer's .env may name another provider.
+os.environ["AI_PROVIDER"] = "openrouter"
+# Tests never depend on the developer's chosen model.
+os.environ["OPENROUTER_MODEL"] = "test-org/test-model:free"
 os.environ["STORAGE_LOCAL_DIRECTORY"] = tempfile.mkdtemp(prefix="avap-test-store-")
 
 import pytest  # noqa: E402

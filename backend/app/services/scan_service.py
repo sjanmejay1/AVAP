@@ -501,7 +501,7 @@ class ScanService:
             keys=UserApiKeyRepository(session),
             audit_service=AuditService(AuditRepository(session)),
             cipher=KeyCipher(self.settings.app_encryption_key.get_secret_value()),
-        ).find_decrypted_key(owner_id, AIKeyProvider.HUGGINGFACE)
+        ).find_decrypted_key(owner_id, AIKeyProvider.OPENROUTER)
         return AIManager(self.settings, api_key=key) if key else None
 
     def run_ai_analysis(
@@ -526,7 +526,7 @@ class ScanService:
         session = self.scan_repository.session
         ai_manager = self._ai_manager_for(session, user_id)
         if ai_manager is None:
-            raise AIKeyRequiredException(AIKeyProvider.HUGGINGFACE.value)
+            raise AIKeyRequiredException(AIKeyProvider.OPENROUTER.value)
 
         package = self._reparse_raw_output(user_id, scan_job)
         audit_service = AuditService(AuditRepository(session))
