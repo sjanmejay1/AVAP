@@ -41,6 +41,73 @@ Frontend architecture and API integration rules belong in `frontend.md`.
 
 ---
 
+# 0. Current Visual System (revision of 2026-11-21)
+
+The frontend phase replaced the purple, dashboard-centred look with the system below, approved by the owner on 2026-11-21. Where an older section of this document disagrees with this one, **this section wins**. Specifically it supersedes: §2.3 (purple brand), §4 (color system), the hex values in §5 and §6, the typeface in §7, §9 (radius), §11 (shadows), §12 (sidebar shell), §14 metric cards, §23 (charts) and §32 (dashboard). The tokens live in `app/globals.css`.
+
+## 0.1 The rule: color means something
+
+- The base is **pure white and black**. There is no brand hue. Primary buttons are solid black (white in dark mode).
+- Saturated color appears only when it carries meaning, and it is always paired with a text label:
+
+| Color | Meaning |
+|---|---|
+| Red | Critical severity, failed scans, destructive actions, errors |
+| Orange | High severity |
+| Yellow | Medium severity, warnings, pending scans, the "AI advisory, unverified" notice |
+| Blue | Low severity, information, running scans |
+| Green | Completed scans, success, a valid API key |
+| Grey | Informational or unknown severity, cancelled scans |
+
+A page with no findings therefore looks calm, and a critical finding is the loudest thing on any page.
+
+## 0.2 Base tokens
+
+| Token | Light | Dark |
+|---|---|---|
+| `--background` | `#FFFFFF` | `#000000` |
+| `--foreground` | `#000000` | `#FFFFFF` |
+| `--card` / `--popover` | `#FFFFFF` | `#0F0F0F` |
+| `--muted` / `--secondary` / `--accent` | `#F5F5F5` | `#1A1A1A` |
+| `--muted-foreground` | `#525252` (7.8:1 on white) | `#A3A3A3` (8.3:1 on black) |
+| `--border` | `#E5E5E5` | `#262626` |
+| `--input` (control borders, 3:1+) | `#8C8C8C` | `#737373` |
+| `--ring` (focus) | `#000000` | `#FFFFFF` |
+
+## 0.3 Semantic tokens
+
+Foreground on its own background, contrast checked at 4.5:1 or better in both themes.
+
+| Meaning | Light text / bg / border | Dark text / bg (alpha on black) |
+|---|---|---|
+| Critical, destructive | `#B91C1C` / `#FEF2F2` / `#FECACA` | `#F87171` / red 14% |
+| High | `#C2410C` / `#FFF7ED` / `#FED7AA` | `#FB923C` / orange 14% |
+| Medium, warning | `#854D0E` / `#FEFCE8` / `#FDE047` | `#FACC15` / yellow 14% |
+| Low, info | `#1D4ED8` / `#EFF6FF` / `#BFDBFE` | `#60A5FA` / blue 14% |
+| Success | `#15803D` / `#F0FDF4` / `#BBF7D0` | `#4ADE80` / green 14% |
+| Informational, unknown | `#525252` / `#F5F5F5` / `#D4D4D4` | `#A3A3A3` / grey 12% |
+
+## 0.4 Type
+
+- **Archivo** (variable: weight 100–900, width 62–125) for all interface text. Page titles that name the thing being assessed (a target) use the `.type-wide` utility (`wdth` 118), so the target itself is the headline.
+- **JetBrains Mono** only for machine values: IP addresses, ports, MACs, CVE ids, NSE script output and raw logs. Never for labels.
+- Scale (1.25 ratio, 16px base): display 40, h1 32, h2 25, h3 20, title 16, body 14, caption 13, micro 12. Tabular figures throughout.
+- Sentence case everywhere. No all-caps eyebrows, no middle-dot meta strings, no arrows appended to buttons.
+
+## 0.5 Shape, depth and motion
+
+- Radius follows hierarchy: 4px for controls and badges, 8px for sheets and dialogs.
+- Surfaces are separated by 1px rules, not shadows. The only shadow (`--shadow-overlay`) is on dialogs, menus and toasts.
+- Motion only answers an action (dialog, menu, row expand). The one ambient motion is the pulsing dot on a running scan. `prefers-reduced-motion` turns all of it off.
+
+## 0.6 Layout
+
+- No sidebar: a 56px top bar (wordmark, Targets link, account menu), then one left-aligned column, max 1200px, 16px gutters on mobile.
+- Breadcrumbs sit above each page title and collapse to a "Back to …" link on small screens.
+- Lists are bordered blocks with divided rows. They are grid rows on desktop and stacked rows on mobile; wide tables scroll sideways inside their own frame.
+
+---
+
 # 1. Product Design Direction
 
 AVAP must feel like a premium enterprise cybersecurity platform.
@@ -145,30 +212,9 @@ Avoid excessive:
 
 ---
 
-## 2.3 Purple Is Brand, Not Risk
+## 2.3 Color Is Meaning, Not Brand
 
-Purple is AVAP's primary product accent.
-
-Purple is used for:
-
-- primary actions
-- active navigation
-- selected controls
-- focus indicators
-- branded data series
-- neutral product highlights
-
-Purple must never replace security severity semantics.
-
-For example:
-
-- Critical remains red
-- High remains orange-red
-- Medium remains amber
-- Low remains blue
-- Informational remains neutral
-
-A Critical vulnerability must never appear purple merely to match the brand.
+AVAP has no brand hue. Saturated color is reserved for severity and status (§0.1), so it never has to compete with decoration. A Critical finding is always red and always labelled.
 
 ---
 
@@ -259,158 +305,7 @@ Components should primarily consume semantic tokens.
 
 # 4. Color System
 
-## 4.1 Primary Brand Palette
-
-The AVAP brand palette is based on a refined violet-purple family inspired by the provided dashboard reference.
-
-| Token | Hex | Purpose |
-|---|---|---|
-| `purple-50` | `#F7F3FF` | Very subtle selected backgrounds |
-| `purple-100` | `#EEE5FF` | Soft accent surfaces |
-| `purple-200` | `#DDCCFF` | Decorative accent |
-| `purple-300` | `#C4A5FF` | Secondary visual emphasis |
-| `purple-400` | `#A875F5` | Hover highlights |
-| `purple-500` | `#8B5CF6` | Primary accent |
-| `purple-600` | `#7C3AED` | Primary action |
-| `purple-700` | `#6D28D9` | Primary action hover |
-| `purple-800` | `#5B21B6` | Strong brand emphasis |
-| `purple-900` | `#4C1D95` | Deep brand tone |
-
-Primary semantic token:
-
-```text
-primary = purple-600
-```
-
-Primary hover:
-
-```text
-primary-hover = purple-700
-```
-
-Primary subtle:
-
-```text
-primary-subtle = purple-50
-```
-
-Primary foreground:
-
-```text
-primary-foreground = #FFFFFF
-```
-
----
-
-## 4.2 Primary Gradient
-
-Gradients are allowed only for high-value branded emphasis.
-
-Primary gradient:
-
-```css
-linear-gradient(
-  135deg,
-  #9B5CF6 0%,
-  #7C3AED 55%,
-  #6D28D9 100%
-)
-```
-
-Approved uses:
-
-- primary CTA where additional prominence is justified
-- compact brand accents
-- selected dashboard visualization
-- premium summary highlight
-- active progress indication
-
-Do not use the gradient for:
-
-- every button
-- tables
-- full page backgrounds
-- long text containers
-- destructive actions
-- severity badges
-
-A page should normally contain no more than a few prominent gradient surfaces.
-
----
-
-## 4.3 Neutral Light Palette
-
-| Token | Hex | Purpose |
-|---|---|---|
-| `neutral-0` | `#FFFFFF` | Primary surface |
-| `neutral-25` | `#FCFCFD` | Elevated clean surface |
-| `neutral-50` | `#F8F9FC` | Secondary surface |
-| `neutral-100` | `#F1F3F8` | Page background |
-| `neutral-200` | `#E6E8F0` | Borders |
-| `neutral-300` | `#D2D6E1` | Strong border |
-| `neutral-400` | `#9CA3B5` | Disabled text |
-| `neutral-500` | `#6B7280` | Secondary text |
-| `neutral-600` | `#4B5563` | Supporting text |
-| `neutral-700` | `#374151` | Strong text |
-| `neutral-800` | `#1F2937` | Heading text |
-| `neutral-900` | `#111827` | Primary text |
-| `neutral-950` | `#080B12` | Maximum contrast |
-
-Recommended light theme:
-
-```text
-page-background = neutral-100
-surface = neutral-0
-surface-secondary = neutral-50
-border = neutral-200
-text-primary = neutral-900
-text-secondary = neutral-600
-text-muted = neutral-500
-```
-
-The page background should have a very subtle cool lavender undertone.
-
-Avoid pure white as the entire application background.
-
-White should primarily represent elevated surfaces.
-
----
-
-## 4.4 Dark Palette
-
-Dark mode must be designed deliberately.
-
-Do not simply invert light theme colors.
-
-| Token | Hex | Purpose |
-|---|---|---|
-| `dark-950` | `#090A0F` | Main background |
-| `dark-900` | `#0F1118` | Secondary background |
-| `dark-850` | `#141720` | Primary surface |
-| `dark-800` | `#1A1E29` | Elevated surface |
-| `dark-700` | `#252A38` | Borders |
-| `dark-600` | `#343A4A` | Strong borders |
-| `dark-400` | `#8D94A5` | Muted text |
-| `dark-300` | `#B2B8C5` | Secondary text |
-| `dark-100` | `#EAECF2` | Primary text |
-| `dark-50` | `#F7F8FA` | Maximum contrast |
-
-Recommended dark theme:
-
-```text
-page-background = dark-950
-surface = dark-850
-surface-secondary = dark-900
-surface-elevated = dark-800
-border = dark-700
-text-primary = dark-100
-text-secondary = dark-300
-text-muted = dark-400
-```
-
-Dark mode must maintain the premium soft-surface language without producing excessive glow.
-
-Purple accents should be slightly brighter in dark mode where contrast requires it.
+See §0.1–§0.3 for the current color system. The earlier purple brand palette, primary gradient and lavender-tinted neutrals were retired on 2026-11-21.
 
 ---
 

@@ -6,6 +6,4 @@ export const vulnerabilityKeys = {
   lists: () => [...vulnerabilityKeys.all, "list"] as const,
   list: (params: { skip: number; limit: number } & VulnerabilityListFilters) =>
     [...vulnerabilityKeys.lists(), params] as const,
-  details: () => [...vulnerabilityKeys.all, "detail"] as const,
-  detail: (id: string) => [...vulnerabilityKeys.details(), id] as const,
 };

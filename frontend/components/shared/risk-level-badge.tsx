@@ -1,12 +1,11 @@
 import { SeverityBadge } from "@/components/shared/severity-badge";
 import { riskLevelToSeverityKey } from "@/constants/severity";
-import type { RiskLevel } from "@/features/dashboard/types/dashboard";
+import type { RiskLevel } from "@/features/risk/types/risk";
 
 /**
- * Renders a deterministic Module 06 RiskLevel. Visually identical palette
- * to SeverityBadge (both share the same five-value taxonomy) but kept as
- * its own component since RiskLevel and severity_rating are distinct
- * backend concepts that should never be silently interchanged by callers.
+ * Renders a deterministic RiskLevel. Same palette as SeverityBadge (both
+ * share one five-value scale) but kept separate because RiskLevel and
+ * severity_rating are distinct backend concepts.
  */
 export function RiskLevelBadge({
   level,

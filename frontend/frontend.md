@@ -4,6 +4,9 @@
 
 # Purpose
 
+> **Revision, 2026-11-21 (frontend phase).** Authentication now exists (see Authentication below). The product is targets → scans, not a dashboard: the dashboard, assets, audit and global findings, risk and vulnerability pages are gone. The visual system is black and white, with color reserved for meaning (see design_system.md §0). Recharts and Framer Motion were removed from the stack, and Zustand holds no state today. Where an older section below says otherwise, the revision wins.
+
+
 This document defines the complete frontend architecture for the Automated Vulnerability Assessment Platform (AVAP).
 
 It serves as the authoritative guide for frontend implementation, ensuring architectural consistency, maintainability, scalability, security, and an enterprise-grade user experience.
@@ -393,35 +396,41 @@ User sees:
 
 ---
 
-# Authentication (Future)
+# Authentication
 
-No implementation now.
+Delivered on 2026-11-21 (frontend phase). The backend issues a short-lived JWT access token and a rotating, httpOnly, `SameSite=Strict` refresh cookie (`avap_refresh`, path `/api/v1/auth`).
 
-Frontend should remain architecture-ready.
-
-Authentication provider will plug into:
-
-```
-providers/
-
-middleware
-
-route guards
-
-auth hooks
-```
-
-Do not scaffold authentication now.
+- **Token storage:** the access token lives only in memory (`lib/api/auth-token.ts`). It is never written to localStorage, sessionStorage or a readable cookie. A reload loses it on purpose; the refresh cookie restores the session.
+- **Transport** (`lib/api/auth-interceptors.ts`, installed on `apiClient`):
+  - Every call except `/auth/login|register|refresh|logout` gets `Authorization: Bearer <token>`.
+  - A 401 from any other call triggers one `POST /auth/refresh`, then replays the request once.
+  - If the refresh fails, the session-ended event fires.
+  - Response unwrapping stays in `requestData`.
+- **Refresh** (`lib/api/session.ts`): a separate Axios instance with `withCredentials` and no interceptors. It is single-flight: concurrent 401s and StrictMode's double effects share one request, because the cookie rotates on every use.
+- **Session state** (`features/auth/providers/auth-provider.tsx`, a React context; not Zustand, because it is neither UI state nor server cache):
+  - `status` is `loading`, `authenticated` or `anonymous`. The context also holds `user` and `endReason`.
+  - On mount it restores the session.
+  - Ending a session clears the token **and the whole TanStack Query cache**.
+- **Guards:**
+  - `AuthGuard` wraps `app/(app)/`. An anonymous visitor goes to `/login?next=<path>`, plus `reason=expired` when the session ended on its own.
+  - `GuestGuard` wraps `app/(auth)/`. It sends a signed-in visitor to `safeNextPath(next)`, which accepts same-origin paths only.
+- **Profile:** password change (which ends the session, because the backend revokes every refresh token) and the user's OpenRouter key (write-only; the last 4 characters are shown).
+- **Not here, by design:** a server-side (`proxy`/middleware) check, since there is no token on the server to read. The backend enforces auth and per-user ownership on every request.
 
 ---
 
-# Routing
+# Routes
 
-Use App Router.
+| Route | Page |
+|---|---|
+| `/` | Redirects to `/targets` |
+| `/login`, `/register` | `app/(auth)/`, wrapped in `GuestGuard` |
+| `/targets` | Targets list (home): search, last scan, risk |
+| `/targets/[targetId]` | Scan history and New scan (Quick or Full) |
+| `/scans/[scanId]` | Live status, then tabs: Overview, Hosts, Ports & services, Findings, AI advice, Raw output (`?tab=`) |
+| `/profile` | Account, OpenRouter key, password |
 
-Feature routes only.
-
-Avoid deeply nested routes.
+The global dashboard, assets, findings, vulnerabilities, risk, audit, scans and reports pages were removed in the frontend phase (owner-approved).
 
 ---
 

@@ -5,7 +5,7 @@
  * Reports are immutable, versioned artifacts — there is no update endpoint,
  * and no server-side filesystem path is ever exposed here.
  */
-export type RiskLevel = "INFORMATIONAL" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+import type { RiskLevel } from "@/features/risk/types/risk";
 
 export interface ReportResponse {
   id: string;

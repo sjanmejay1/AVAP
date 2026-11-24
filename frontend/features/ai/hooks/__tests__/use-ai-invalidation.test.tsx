@@ -21,7 +21,7 @@ function wrapper(queryClient: QueryClient) {
 }
 
 describe("useGenerateRecommendation — cache invalidation map", () => {
-  it("invalidates only dashboard/ai — never any risk query, dashboard/summary, or unrelated dashboard reads", async () => {
+  it("invalidates nothing — never any risk query — and applies the response with setQueryData", async () => {
     mockedGenerate.mockResolvedValue({
       id: "rec-1",
       vulnerability_id: "vuln-1",
@@ -47,11 +47,9 @@ describe("useGenerateRecommendation — cache invalidation map", () => {
     result.current.mutate("assessment-1");
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    const invalidatedKeys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
-    expect(invalidatedKeys).toContainEqual(["dashboard", "ai"]);
-    expect(invalidatedKeys.some((key) => Array.isArray(key) && key[0] === "risk")).toBe(false);
-    expect(invalidatedKeys).not.toContainEqual(["dashboard", "summary"]);
-    expect(invalidatedKeys).not.toContainEqual(["dashboard", "scans"]);
+    // The dashboard (the only other reader of AI coverage) was removed, so
+    // nothing needs re-reading: the response itself is the new cache entry.
+    expect(invalidateSpy).not.toHaveBeenCalled();
 
     // The mutation response is applied authoritatively via setQueryData.
     expect(queryClient.getQueryData(["ai", "recommendation", "assessment-1"])).toMatchObject({

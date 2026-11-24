@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 
+/** An empty screen is an invitation to act: say what goes here and offer the action. */
 export function EmptyState({
   icon: Icon,
   title,
@@ -8,20 +9,19 @@ export function EmptyState({
 }: {
   icon: LucideIcon;
   title: string;
-  description?: string;
-  /** Optional valid action (design_system.md §24) — e.g. a "Create Target" button. */
+  description?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Icon className="size-5" aria-hidden="true" />
-      </span>
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      {description && (
-        <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
-      )}
-      {action && <div className="mt-2">{action}</div>}
+    <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border px-6 py-10 sm:items-center sm:text-center">
+      <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+      <div className="flex flex-col gap-1">
+        <p className="text-title text-foreground">{title}</p>
+        {description && (
+          <p className="max-w-md text-sm text-muted-foreground">{description}</p>
+        )}
+      </div>
+      {action && <div className="mt-1">{action}</div>}
     </div>
   );
 }

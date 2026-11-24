@@ -1,18 +1,52 @@
-import { AppSidebar } from "@/components/shared/app-sidebar";
-import { AppTopbar } from "@/components/shared/app-topbar";
+import Link from "next/link";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+import { Wordmark } from "@/components/shared/wordmark";
+
+/**
+ * Two destinations only (targets and profile), so no sidebar: a slim top
+ * bar, then one left-aligned content column.
+ */
+export function AppShell({
+  accountMenu,
+  children,
+}: {
+  /** Rendered at the right of the top bar; supplied by the signed-in layout. */
+  accountMenu: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <AppTopbar />
-        {/* design_system.md §8 Page Spacing: mobile 16px, tablet 24px,
-            desktop 32px, large desktop 40px horizontal padding. */}
-        <main className="flex-1 overflow-y-auto px-4 py-7 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
-          {children}
-        </main>
-      </div>
+    <div className="flex min-h-screen flex-col">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
+      <header className="sticky top-0 z-40 border-b border-border bg-background">
+        <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between gap-4 px-4 sm:px-6">
+          <div className="flex items-center gap-6">
+            <Link href="/targets" aria-label="AVAP targets" className="rounded-sm">
+              <Wordmark />
+            </Link>
+            <nav aria-label="Main">
+              <Link
+                href="/targets"
+                className="rounded-sm text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Targets
+              </Link>
+            </nav>
+          </div>
+          {accountMenu}
+        </div>
+      </header>
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-[1200px] flex-1 px-4 py-8 outline-none sm:px-6 lg:py-10"
+      >
+        {children}
+      </main>
     </div>
   );
 }

@@ -1,22 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 
-import { dashboardKeys } from "@/features/dashboard/hooks/query-keys";
+import { reportKeys } from "@/features/reports/hooks/query-keys";
+import { riskKeys } from "@/features/risk/hooks/query-keys";
 import { scansApi } from "@/features/scans/api/scans-api";
 import { scanKeys } from "@/features/scans/hooks/query-keys";
 import type {
+  AIAnalysisResponse,
   CreateScanRequest,
   ScanResponse,
   ScanStatus,
 } from "@/features/scans/types/scan";
+import { vulnerabilityKeys } from "@/features/vulnerabilities/hooks/query-keys";
 import type { ApiError } from "@/lib/api/errors";
 
 /**
- * Backend_Walk.md §10.7: poll GET /scans/{id}/status (cheap, single-row
- * lookup) rather than the full GET /scans/{id}. No explicit interval is
- * documented for this endpoint specifically, so this uses the low end of
- * the one explicitly documented "safe to poll" bound in this codebase
- * (§10.6, 10-30s for the even-heavier /dashboard/* aggregates) rather than
- * inventing an unsupported faster cadence.
+ * Poll GET /scans/{id}/status (cheap, single-row lookup) rather than the
+ * full GET /scans/{id}, every 10 seconds while a scan is active.
  */
 export const SCAN_STATUS_POLL_INTERVAL_MS = 10_000;
 
@@ -47,14 +47,15 @@ export function resolveScanListPollInterval(
 export function useScans(
   params: { skip?: number; limit?: number; target_id?: string } = {}
 ) {
-  const skip = params.skip ?? 0;
-  const limit = params.limit ?? 50;
-  const query = { skip, limit, target_id: params.target_id };
+  const query = {
+    skip: params.skip ?? 0,
+    limit: params.limit ?? 50,
+    target_id: params.target_id,
+  };
   return useQuery({
     queryKey: scanKeys.list(query),
     queryFn: () => scansApi.getScans(query),
-    refetchInterval: (query) =>
-      resolveScanListPollInterval(query.state.data?.scans),
+    refetchInterval: (state) => resolveScanListPollInterval(state.state.data?.scans),
   });
 }
 
@@ -73,8 +74,37 @@ export function useScanStatus(scanId: string) {
     queryKey: scanKeys.status(scanId),
     queryFn: () => scansApi.getScanStatus(scanId),
     enabled: Boolean(scanId),
-    refetchInterval: (query) => resolveScanStatusPollInterval(query.state.data?.status),
+    refetchInterval: (state) => resolveScanStatusPollInterval(state.state.data?.status),
   });
+}
+
+/** Per-host detail (OS, MAC, uptime, traceroute, services with NSE output). */
+export function useScanHosts(scanId: string, enabled = true) {
+  return useQuery({
+    queryKey: scanKeys.hosts(scanId),
+    queryFn: () => scansApi.getScanHosts(scanId),
+    enabled: Boolean(scanId) && enabled,
+  });
+}
+
+/**
+ * Re-reads everything a finished scan populated: the full record, hosts,
+ * findings, risk and reports. Called once when polling sees a terminal
+ * status. Never triggers server work itself.
+ */
+export function useRefreshFinishedScan() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (scanId: string) => {
+      queryClient.invalidateQueries({ queryKey: scanKeys.detail(scanId) });
+      queryClient.invalidateQueries({ queryKey: scanKeys.hosts(scanId) });
+      queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: vulnerabilityKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: riskKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.lists() });
+    },
+    [queryClient]
+  );
 }
 
 /**
@@ -88,17 +118,11 @@ export function useCreateScan() {
     mutationFn: (body: CreateScanRequest) => scansApi.createScan(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "scans"] });
     },
   });
 }
 
-/**
- * No `retry`: cancellation is not idempotent to replay blindly — a retry
- * after a transport failure could hit a scan that has since finished on
- * its own and get back a stale-looking conflict.
- */
+/** No `retry`: a replay could hit a scan that has since finished on its own. */
 export function useCancelScan() {
   const queryClient = useQueryClient();
   return useMutation<ScanResponse, ApiError, string>({
@@ -107,8 +131,6 @@ export function useCancelScan() {
       queryClient.invalidateQueries({ queryKey: scanKeys.detail(scanId) });
       queryClient.invalidateQueries({ queryKey: scanKeys.status(scanId) });
       queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "scans"] });
     },
   });
 }
@@ -122,8 +144,30 @@ export function useDeleteScan() {
       queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
       queryClient.removeQueries({ queryKey: scanKeys.detail(scanId) });
       queryClient.removeQueries({ queryKey: scanKeys.status(scanId) });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "scans"] });
+      queryClient.removeQueries({ queryKey: scanKeys.hosts(scanId) });
     },
+  });
+}
+
+/**
+ * No `retry`: each run calls the user's OpenRouter key (rate-limited free
+ * tier) and writes findings. The backend recalculates risk afterwards, so
+ * findings and risk are re-read.
+ */
+export function useRunAiAnalysis() {
+  const queryClient = useQueryClient();
+  return useMutation<AIAnalysisResponse, ApiError, string>({
+    mutationFn: (scanId: string) => scansApi.runAiAnalysis(scanId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: vulnerabilityKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: riskKeys.all });
+    },
+  });
+}
+
+/** A user-triggered file download: a mutation, not cacheable server state. */
+export function useDownloadRawOutput() {
+  return useMutation<Blob, ApiError, string>({
+    mutationFn: (scanId: string) => scansApi.downloadRawOutput(scanId),
   });
 }

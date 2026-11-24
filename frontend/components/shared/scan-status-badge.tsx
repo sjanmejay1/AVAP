@@ -1,39 +1,35 @@
-import type { ScanStatus } from "@/features/dashboard/types/dashboard";
+import type { ScanStatus } from "@/features/scans/types/scan";
 import { cn } from "@/lib/utils";
 
-const STATUS_META: Record<
-  ScanStatus,
-  { label: string; textClass: string; bgClass: string; pulse?: boolean }
-> = {
+/**
+ * Symbolic colors (design_system.md §3): yellow waiting, blue running,
+ * green completed, red failed, grey cancelled.
+ */
+const STATUS_META: Record<ScanStatus, { label: string; className: string; pulse?: boolean }> = {
   PENDING: {
     label: "Pending",
-    textClass: "text-muted-foreground",
-    bgClass: "bg-muted",
+    className: "border-warning-border bg-warning-bg text-warning",
   },
   RUNNING: {
     label: "Running",
-    textClass: "text-info",
-    bgClass: "bg-info-bg",
+    className: "border-info-border bg-info-bg text-info",
     pulse: true,
   },
   COMPLETED: {
     label: "Completed",
-    textClass: "text-success",
-    bgClass: "bg-success-bg",
+    className: "border-success-border bg-success-bg text-success",
   },
   FAILED: {
     label: "Failed",
-    textClass: "text-destructive",
-    bgClass: "bg-destructive-bg",
+    className: "border-destructive-border bg-destructive-bg text-destructive",
   },
   CANCELLED: {
     label: "Cancelled",
-    textClass: "text-muted-foreground",
-    bgClass: "bg-muted",
+    className: "border-border bg-muted text-muted-foreground",
   },
 };
 
-/** Scan lifecycle status — an operational signal, not a security severity. */
+/** Scan lifecycle status: an operational signal, not a security severity. */
 export function ScanStatusBadge({
   status,
   className,
@@ -46,9 +42,8 @@ export function ScanStatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
-        meta.bgClass,
-        meta.textClass,
+        "inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs font-medium whitespace-nowrap",
+        meta.className,
         className
       )}
     >

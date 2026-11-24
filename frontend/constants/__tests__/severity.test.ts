@@ -35,9 +35,10 @@ describe("severityRatingToKey", () => {
 });
 
 describe("SEVERITY_META", () => {
-  it("never assigns the brand purple to a severity color (purple is not a severity semantic)", () => {
+  it("never uses the neutral primary token for a severity color (color is reserved for meaning)", () => {
     for (const meta of Object.values(SEVERITY_META)) {
-      expect(meta.chartColor.toLowerCase()).not.toContain("primary");
+      expect(meta.fillClass).not.toContain("primary");
+      expect(meta.textClass).not.toContain("primary");
     }
   });
 });

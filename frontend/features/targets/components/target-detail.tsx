@@ -1,136 +1,85 @@
 "use client";
 
-import { PlayCircle, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyableValue } from "@/components/shared/copyable-value";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AssetList } from "@/features/assets/components/asset-list";
-import { ScanList } from "@/features/scans/components/scan-list";
-import { useCreateScan } from "@/features/scans/hooks/use-scans";
+import { PageSkeleton } from "@/components/shared/skeletons";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NewScanDialog } from "@/features/scans/components/new-scan-dialog";
+import { ScanHistory } from "@/features/scans/components/scan-history";
 import { DeleteTargetDialog } from "@/features/targets/components/delete-target-dialog";
 import { useTarget } from "@/features/targets/hooks/use-targets";
 import { TARGET_TYPE_LABELS } from "@/features/targets/types/target";
-import { VulnerabilityList } from "@/features/vulnerabilities/components/vulnerability-list";
+import { ApiError } from "@/lib/api/errors";
 import { formatDateTime } from "@/utils/format";
-
-function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="text-sm text-foreground">{children}</div>
-    </div>
-  );
-}
 
 export function TargetDetail({ targetId }: { targetId: string }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const { data: target, isPending, isError, refetch } = useTarget(targetId);
-  const { mutate: createScan, isPending: isStartingScan } = useCreateScan();
+  const { data: target, isPending, isError, error, refetch } = useTarget(targetId);
 
-  function handleStartScan() {
-    if (isStartingScan) return;
-    createScan(
-      { target_id: targetId },
-      {
-        onSuccess: (scan) => {
-          toast.success("Scan started");
-          router.push(`/scans/${scan.scan_id}`);
-        },
-        onError: (error) => toast.error(error.message),
-      }
-    );
-  }
-
-  if (isPending) {
-    return (
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-        <Skeleton className="h-8 w-64" />
-        <Card>
-          <CardContent className="flex flex-col gap-4">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (isPending) return <PageSkeleton />;
 
   if (isError || !target) {
+    const notFound = error instanceof ApiError && error.code === "NOT_FOUND";
     return (
-      <div className="mx-auto flex max-w-[1600px] flex-col">
-        <PageHeader title="Target" />
+      <div className="flex flex-col">
+        <PageHeader title="Target" breadcrumbs={[{ label: "Targets", href: "/targets" }]} />
         <ErrorState
-          title="Unable to load this target"
-          description="The target record could not be retrieved."
-          onRetry={() => refetch()}
+          title={notFound ? "This target doesn't exist" : "This target couldn't be loaded"}
+          description={
+            notFound
+              ? "It may have been deleted, or it belongs to another account."
+              : undefined
+          }
+          onRetry={notFound ? undefined : () => refetch()}
         />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
+    <div className="flex flex-col">
       <PageHeader
+        wide
         title={target.target}
-        description={TARGET_TYPE_LABELS[target.target_type]}
+        breadcrumbs={[{ label: "Targets", href: "/targets" }, { label: target.target }]}
+        description={`${TARGET_TYPE_LABELS[target.target_type]}, added ${formatDateTime(target.created_at)}`}
         actions={
-          <div className="flex items-center gap-2">
-            <Button onClick={handleStartScan} disabled={isStartingScan}>
-              <PlayCircle className="size-4" aria-hidden="true" />
-              {isStartingScan ? "Starting scan…" : "Start Scan"}
-            </Button>
-            <Button variant="outline" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete
-            </Button>
-          </div>
+          <>
+            <NewScanDialog target={target} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="More target actions">
+                  <MoreHorizontal aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  <Trash2 aria-hidden="true" />
+                  Delete target
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       />
 
-      <Card>
-        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <DetailField label="Target">
-            <CopyableValue value={target.target} />
-          </DetailField>
-          <DetailField label="Type">{TARGET_TYPE_LABELS[target.target_type]}</DetailField>
-          <DetailField label="Added">{formatDateTime(target.created_at)}</DetailField>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Scans</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScanList targetId={target.id} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Assets Discovered</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AssetList targetId={target.id} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Vulnerabilities Found</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VulnerabilityList targetId={target.id} />
-        </CardContent>
-      </Card>
+      <section aria-labelledby="scan-history-heading" className="flex flex-col gap-4">
+        <h2 id="scan-history-heading" className="text-h3">
+          Scan history
+        </h2>
+        <ScanHistory targetId={target.id} emptyAction={<NewScanDialog target={target} />} />
+      </section>
 
       <DeleteTargetDialog
         target={target}

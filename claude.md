@@ -24,7 +24,7 @@ Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · np
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
 
 
-Quality bar to match: 657 backend tests + 164 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean (OpenRouter free-only, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
+Quality bar to match: 657 backend tests + 178 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean, frontend tsc/eslint/next build clean (frontend phase, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 
@@ -41,7 +41,7 @@ Layers talk only to adjacent layers. Dependencies point inward.
 Frontend layering. Component → Feature Hook → API Service → Axios Client → Backend.
 
 
-Feature-folder organization: features/{targets,scans,assets,vulnerabilities,risk,ai,reports,audit,dashboard}.
+Feature-folder organization: features/{auth,profile,targets,scans,vulnerabilities,risk,ai,reports} (global dashboard, assets, audit and findings pages removed 2026-11-21).
 TanStack Query for server state. Zustand for UI state only.
 Forms: React Hook Form + Zod.
 Reuse the existing response envelope, error normalization, and loading/empty/error states. Do not invent parallel patterns.

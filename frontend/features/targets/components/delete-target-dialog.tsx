@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import { useDeleteTarget } from "@/features/targets/hooks/use-targets";
 import type { TargetResponse } from "@/features/targets/types/target";
 
@@ -30,9 +31,8 @@ export function DeleteTargetDialog({
   const { mutate, isPending } = useDeleteTarget();
 
   function handleConfirm(event: React.MouseEvent<HTMLButtonElement>) {
-    // AlertDialogAction closes on click by default (it's a DialogPrimitive.Close
-    // under the hood) — suppress that so the dialog stays open, showing a
-    // pending state, until the backend actually confirms the deletion.
+    // AlertDialogAction closes on click by default — keep it open, showing
+    // a pending state, until the backend confirms the deletion.
     event.preventDefault();
     if (isPending) return;
 
@@ -44,8 +44,7 @@ export function DeleteTargetDialog({
       },
       onError: (error) => {
         toast.error(error.message);
-        // Already gone server-side (e.g. deleted from another session) —
-        // nothing left to confirm, so close rather than block on a retry.
+        // Already gone server-side: nothing left to confirm.
         if (error.code === "NOT_FOUND") onOpenChange(false);
       },
     });
@@ -60,15 +59,14 @@ export function DeleteTargetDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete target?</AlertDialogTitle>
+          <AlertDialogTitle>Delete this target?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently removes the target. Per AVAP&apos;s data model,
-            deleting a target also removes its associated scan history. This
-            cannot be undone.
+            This also deletes every scan of it, with their findings and reports. It
+            can&apos;t be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <p className="truncate rounded-md border border-border bg-muted/50 px-3 py-2 font-mono text-sm text-foreground">
+        <p className="truncate rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground">
           {target.target}
         </p>
 
@@ -77,9 +75,9 @@ export function DeleteTargetDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isPending}
-            className="bg-destructive/10 text-destructive hover:bg-destructive/20"
+            className={buttonVariants({ variant: "destructive" })}
           >
-            {isPending ? "Deleting…" : "Delete Target"}
+            {isPending ? "Deleting…" : "Delete target"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

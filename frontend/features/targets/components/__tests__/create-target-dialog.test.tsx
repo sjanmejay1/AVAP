@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,52 +24,72 @@ import { toast } from "sonner";
 
 const mockedCreateTarget = vi.mocked(targetsApi.createTarget);
 
-async function openDialogAndTypeTarget(value: string) {
+function created(target: string) {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    target,
+    target_type: "IPV4" as const,
+    created_at: "2026-07-15T00:00:00Z",
+    updated_at: "2026-07-15T00:00:00Z",
+  };
+}
+
+async function openDialogAndType(value: string) {
   const user = userEvent.setup();
   renderWithQueryClient(<CreateTargetDialog />);
+  await user.click(screen.getByRole("button", { name: "Add target" }));
+  const dialog = await screen.findByRole("dialog");
+  await user.type(within(dialog).getByLabelText("Target"), value);
+  return { user, dialog };
+}
 
-  await user.click(screen.getByRole("button", { name: /new target/i }));
-  const input = await screen.findByLabelText("Target");
-  await user.type(input, value);
-  await user.click(screen.getByRole("button", { name: /add target/i }));
-
-  return user;
+async function submit(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await user.click(within(dialog).getByRole("button", { name: "Add target" }));
 }
 
 describe("CreateTargetDialog", () => {
-  it("submits exactly {target} to the API and confirms success without leaving the dialog open", async () => {
-    mockedCreateTarget.mockResolvedValue({
-      id: "11111111-1111-1111-1111-111111111111",
-      target: "10.0.0.5",
-      target_type: "IPV4",
-      created_at: "2026-07-15T00:00:00Z",
-      updated_at: "2026-07-15T00:00:00Z",
-    });
+  it("submits exactly {target} to the API and closes on success", async () => {
+    mockedCreateTarget.mockResolvedValue(created("10.0.0.5"));
 
-    await openDialogAndTypeTarget("10.0.0.5");
+    const { user, dialog } = await openDialogAndType("10.0.0.5");
+    await submit(user, dialog);
 
-    await waitFor(() =>
-      expect(mockedCreateTarget).toHaveBeenCalledWith({ target: "10.0.0.5" })
-    );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Target created"));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(mockedCreateTarget).toHaveBeenCalledWith({ target: "10.0.0.5" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Target added"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("surfaces the backend's 422 validation message on the field and keeps the dialog open — never a raw exception", async () => {
+  it("describes what it recognised while typing", async () => {
+    await openDialogAndType("10.0.0.0/24");
+    expect(screen.getByText("CIDR range, 256 addresses.")).toBeInTheDocument();
+  });
+
+  it("rejects an obviously invalid value in the browser without calling the API", async () => {
+    const { user, dialog } = await openDialogAndType("not a target");
+    await submit(user, dialog);
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/Enter an IPv4 address/);
+    expect(mockedCreateTarget).not.toHaveBeenCalled();
+  });
+
+  it("shows the backend's 422 message on the field when the server is stricter than the browser", async () => {
+    // A /20 passes the browser's default /16 limit; a server configured with
+    // MIN_CIDR_PREFIX_LENGTH=24 still refuses it, and its message must show.
     mockedCreateTarget.mockRejectedValue(
       new ApiError({
         code: "VALIDATION_ERROR",
-        message: "Unsupported or invalid target format: 'not a target'.",
+        message: "CIDR range '10.0.0.0/20' is too broad; the narrowest allowed prefix is /24.",
         status: 422,
       })
     );
 
-    await openDialogAndTypeTarget("not a target");
+    const { user, dialog } = await openDialogAndType("10.0.0.0/20");
+    await submit(user, dialog);
 
     expect(
-      await screen.findByText("Unsupported or invalid target format: 'not a target'.")
+      await within(dialog).findByText(
+        "CIDR range '10.0.0.0/20' is too broad; the narrowest allowed prefix is /24."
+      )
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -83,22 +103,15 @@ describe("CreateTargetDialog", () => {
       })
     );
 
-    await openDialogAndTypeTarget("duplicate.com");
+    const { user, dialog } = await openDialogAndType("duplicate.com");
+    await submit(user, dialog);
 
-    expect(
-      await screen.findByText("Target 'duplicate.com' already exists.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Target 'duplicate.com' already exists.")).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("prevents duplicate submission: rapid double-click only fires one mutation", async () => {
-    let resolveCreate: (value: {
-      id: string;
-      target: string;
-      target_type: "IPV4";
-      created_at: string;
-      updated_at: string;
-    }) => void = () => {};
+  it("prevents duplicate submission: a second click while pending fires no second request", async () => {
+    let resolveCreate: (value: ReturnType<typeof created>) => void = () => {};
     mockedCreateTarget.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -106,26 +119,13 @@ describe("CreateTargetDialog", () => {
         })
     );
 
-    const user = userEvent.setup();
-    renderWithQueryClient(<CreateTargetDialog />);
-    await user.click(screen.getByRole("button", { name: /new target/i }));
-    await user.type(await screen.findByLabelText("Target"), "10.0.0.5");
-
-    const submitButton = screen.getByRole("button", { name: /add target/i });
+    const { user, dialog } = await openDialogAndType("10.0.0.5");
+    const submitButton = within(dialog).getByRole("button", { name: "Add target" });
     await user.click(submitButton);
-    // The button becomes disabled ("Adding…") once pending — a second click
-    // on the same element cannot fire a second mutation.
     await waitFor(() => expect(submitButton).toBeDisabled());
     await user.click(submitButton);
 
     expect(mockedCreateTarget).toHaveBeenCalledTimes(1);
-
-    resolveCreate({
-      id: "1",
-      target: "10.0.0.5",
-      target_type: "IPV4",
-      created_at: "2026-07-15T00:00:00Z",
-      updated_at: "2026-07-15T00:00:00Z",
-    });
+    resolveCreate(created("10.0.0.5"));
   });
 });

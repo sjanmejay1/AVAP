@@ -1,19 +1,22 @@
 import { z } from "zod";
 
+import { classifyTarget } from "@/features/targets/lib/classify-target";
+
 /**
- * UX-assist validation only — mirrors just the stable, documented backend
- * constraint (CreateTargetRequest.target: 1-253 chars,
- * backend/app/schemas/target.py). Format (IPv4/CIDR/hostname) is
- * deliberately NOT re-validated here: that is the backend's SSRF-aware
- * target-validation engine (app/core/security.py), and reimplementing it in
- * the browser would be a second, divergent security engine. The backend
- * remains the sole authority on whether a target value is acceptable.
+ * Mirrors the backend's CreateTargetRequest (1–253 characters) and its
+ * target rules (see lib/classify-target.ts) for instant feedback. The
+ * backend re-validates every value and remains the authority.
  */
 export const createTargetSchema = z.object({
   target: z
     .string()
-    .min(1, "Enter a target to scan.")
-    .max(253, "Target must be 253 characters or fewer."),
+    .trim()
+    .min(1, "Enter an IP address, CIDR range or hostname.")
+    .max(253, "Targets must be 253 characters or fewer.")
+    .superRefine((value, context) => {
+      const result = classifyTarget(value);
+      if (!result.ok) context.addIssue({ code: "custom", message: result.message });
+    }),
 });
 
 export type CreateTargetFormValues = z.infer<typeof createTargetSchema>;
