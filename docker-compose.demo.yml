@@ -1,0 +1,34 @@
+# AVAP — demo scan targets, for local testing and the browser (Playwright)
+# tests only. Layer it on top of the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# The targets sit on an `internal` network: no route to the internet and no
+# ports published to the host. Only the backend joins it, so scans of these
+# hostnames never leave the Docker host. They are ordinary, current official
+# images (pinned by version), not deliberately vulnerable lab images.
+#
+# Targets to add in the UI:  demo-web  (nginx, HTTP on 80)
+#                            demo-cache (redis, 6379)
+
+services:
+  backend:
+    networks:
+      - default
+      - demo
+
+  demo-web:
+    image: nginx:1.30.8-alpine
+    restart: unless-stopped
+    networks:
+      - demo
+
+  demo-cache:
+    image: redis:7.4.12-alpine
+    restart: unless-stopped
+    networks:
+      - demo
+
+networks:
+  demo:
+    internal: true

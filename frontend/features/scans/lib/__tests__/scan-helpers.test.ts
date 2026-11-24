@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nvdUrl } from "@/features/scans/components/finding-row";
+import { nvdUrl, unwrapScannerText } from "@/features/scans/components/finding-row";
 import { resolveScanTab } from "@/features/scans/components/scan-detail";
 import { elapsedSeconds } from "@/features/scans/components/scan-status-band";
 import { countOpenPorts, severityCounts } from "@/features/scans/components/tabs/overview-tab";
@@ -161,6 +161,22 @@ describe("nvdUrl", () => {
     expect(nvdUrl("cve-2014-0160")).toBe("https://nvd.nist.gov/vuln/detail/CVE-2014-0160");
     expect(nvdUrl("CVE-2014-0160\"><script>")).toBeNull();
     expect(nvdUrl("OSVDB-1234")).toBeNull();
+  });
+});
+
+describe("unwrapScannerText", () => {
+  it("rejoins Nmap's hard-wrapped lines but keeps paragraph breaks", () => {
+    const nse =
+      "The Apache web server is vulnerable to a denial of service attack when numerous\n" +
+      "      overlapping byte ranges are requested.\n\nDisclosure date: 2011-08-19";
+    expect(unwrapScannerText(nse)).toBe(
+      "The Apache web server is vulnerable to a denial of service attack when numerous " +
+        "overlapping byte ranges are requested.\n\nDisclosure date: 2011-08-19"
+    );
+  });
+
+  it("leaves single-line text alone", () => {
+    expect(unwrapScannerText("  Plain sentence.  ")).toBe("Plain sentence.");
   });
 });
 

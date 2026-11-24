@@ -10,7 +10,7 @@ Stack
 
 Backend (backend/): Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL, Pydantic v2, ReportLab, pytest (SQLite in-memory).
 Frontend (frontend/): Next.js App Router, TypeScript, TanStack Query, Zustand, shadcn/ui + Tailwind, React Hook Form + Zod, Vitest.
-Scanners: Nmap only, QUICK and FULL profiles (OpenVAS stub removed 2026-11-20). Raw output goes to object storage (local or S3, app/storage/).
+Scanners: Nmap only, QUICK and FULL profiles (OpenVAS stub removed 2026-11-20). Raw output goes to object storage (local folder backend/storage/ by default, or S3; code in app/storage/).
 AI: OpenRouter only, FREE models only (app/ai/providers/openrouter.py; OPENROUTER_MODEL must end in ':free' or be 'openrouter/free'), called with each user's own encrypted key; no server-wide key. AI findings are advisory and excluded from risk unless AI_FINDINGS_IN_RISK=true.
 
 
@@ -21,10 +21,11 @@ Backend tests: pytest
 Backend checks: ruff check . · mypy . · bandit -r app · pip-audit
 Frontend dev: npm run dev
 Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · npm run lint (eslint)
+Browser tests: npm run e2e:stack:up · npm run test:e2e (Playwright, 13 tests against docker-compose.demo.yml targets) · npm run e2e:stack:down
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
 
 
-Quality bar to match: 657 backend tests + 178 frontend tests passing, 0 ruff/mypy/bandit findings, pip-audit clean, frontend tsc/eslint/next build clean (frontend phase, 2026-11-21). Run pytest with DATABASE_URL=sqlite:// as a safety net.
+Quality bar to match: 661 backend tests + 180 frontend tests + 13 Playwright tests passing, 0 ruff/mypy/bandit findings, pip-audit clean, frontend tsc/eslint/next build clean (browser-test phase, 2026-11-24). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 

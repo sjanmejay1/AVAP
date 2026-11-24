@@ -36,8 +36,9 @@ export function FindingsTab({ scan }: { scan: ScanResponse }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Confirmed by Nmap scripts and scored by AVAP&apos;s deterministic risk engine. Open a
-        finding for details and remediation advice.
+        Reported by Nmap&apos;s vulnerability scripts and scored by AVAP&apos;s deterministic
+        risk engine. Scripts test how a service responds, so they can misfire (for example,
+        an Apache check flagging nginx); check each finding before acting on it.
       </p>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {findings.confirmed.map((finding) => (

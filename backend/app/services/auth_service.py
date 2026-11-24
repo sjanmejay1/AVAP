@@ -45,7 +45,6 @@ logger = logging.getLogger(__name__)
 _INVALID_CREDENTIALS = "Invalid email or password."
 _SESSION_EXPIRED = "Your session has expired. Please log in again."
 _IP_FAILURE_MULTIPLIER = 4
-_REGISTRATIONS_PER_IP_PER_HOUR = 10
 
 
 @dataclass(frozen=True)
@@ -70,7 +69,7 @@ class AuthThrottles:
             settings.login_max_failures * _IP_FAILURE_MULTIPLIER, window
         )
         self.registration_by_ip = SlidingWindowThrottle(
-            _REGISTRATIONS_PER_IP_PER_HOUR, 3600
+            settings.registrations_per_ip_per_hour, 3600
         )
 
 

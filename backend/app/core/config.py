@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     refresh_cookie_secure: bool = True
     login_max_failures: int = Field(default=5, ge=1)
     login_failure_window_minutes: int = Field(default=15, ge=1)
+    # New accounts allowed per client IP in a sliding hour.
+    registrations_per_ip_per_hour: int = Field(default=10, ge=1)
 
     # Database
     database_url: str | None = None
@@ -99,7 +101,8 @@ class Settings(BaseSettings):
     # standard chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or an IAM role),
     # never from these settings.
     storage_backend: str = "local"
-    storage_local_directory: str = "./object_store"
+    # Its own folder, separate from scan_output/ and generated_reports/.
+    storage_local_directory: str = "./storage"
     s3_bucket: str = ""
     s3_region: str = ""
     # Only for S3-compatible services; empty means AWS.

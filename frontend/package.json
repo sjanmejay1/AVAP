@@ -9,7 +9,10 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "e2e:stack:up": "node e2e/stack.mjs up",
+    "e2e:stack:down": "node e2e/stack.mjs down"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -32,6 +35,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

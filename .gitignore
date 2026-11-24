@@ -19,6 +19,9 @@ audit/
 .mypy_cache/
 .uv_env/
 
-# Raw scan output and the local object store (may contain sensitive data)
+# Raw scan output and the local object store (may contain sensitive data).
+# Anchored: an unanchored "storage/" would also hide backend/app/storage/.
 scan_output/
 object_store/
+/backend/storage/
+/storage/

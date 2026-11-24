@@ -17,6 +17,7 @@ from app.auth.tokens import (
     hash_refresh_token,
 )
 from app.core.config import Settings
+from app.services.auth_service import AuthThrottles
 
 SECRET = "s" * 64
 FERNET_KEY = base64.urlsafe_b64encode(b"k" * 32).decode()
@@ -78,6 +79,29 @@ def test_throttle_forgets_events_outside_the_window():
     throttle = SlidingWindowThrottle(max_events=1, window_seconds=0)
     throttle.record("k")
     assert not throttle.is_blocked("k")
+
+
+def test_registration_limit_defaults_to_ten_per_ip_per_hour(monkeypatch):
+    monkeypatch.delenv("REGISTRATIONS_PER_IP_PER_HOUR", raising=False)
+    throttles = AuthThrottles(Settings(_env_file=None))
+    for _ in range(9):
+        throttles.registration_by_ip.record("10.0.0.1")
+    assert not throttles.registration_by_ip.is_blocked("10.0.0.1")
+    throttles.registration_by_ip.record("10.0.0.1")
+    assert throttles.registration_by_ip.is_blocked("10.0.0.1")
+
+
+def test_registration_limit_follows_the_setting():
+    throttles = AuthThrottles(Settings(_env_file=None, registrations_per_ip_per_hour=2))
+    throttles.registration_by_ip.record("10.0.0.1")
+    throttles.registration_by_ip.record("10.0.0.1")
+    assert throttles.registration_by_ip.is_blocked("10.0.0.1")
+    assert not throttles.registration_by_ip.is_blocked("10.0.0.2")
+
+
+def test_registration_limit_must_be_positive():
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, registrations_per_ip_per_hour=0)
 
 
 @pytest.mark.parametrize(

@@ -21,6 +21,19 @@ export function nvdUrl(cve: string): string | null {
 }
 
 /**
+ * Nmap's NSE scripts hard-wrap prose at about 80 columns. Joins those
+ * single line breaks back into sentences, keeping blank-line paragraph
+ * breaks, so the text reflows to the page width.
+ */
+export function unwrapScannerText(text: string): string {
+  return text
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
  * One finding. Expands to its description and, for scored findings, the
  * AI remediation panel (advisory, generated on request).
  */
@@ -74,7 +87,9 @@ export function FindingRow({
         </div>
         <CollapsibleContent className="flex flex-col gap-6 border-t border-border bg-muted/40 px-4 py-5 sm:pl-11">
           <p className="max-w-prose text-sm break-words whitespace-pre-line">
-            {vulnerability.description || "No description was recorded for this finding."}
+            {vulnerability.description
+              ? unwrapScannerText(vulnerability.description)
+              : "No description was recorded for this finding."}
           </p>
           {showRemediation && assessment && (
             <section aria-label="AI remediation advice" className="flex flex-col gap-3">

@@ -128,6 +128,12 @@ class TestS3ObjectStorage:
 
 
 class TestStorageSettings:
+    def test_local_directory_defaults_to_its_own_storage_folder(self, monkeypatch):
+        # conftest points the suite at a temp dir; clear it to see the default.
+        monkeypatch.delenv("STORAGE_LOCAL_DIRECTORY", raising=False)
+        settings = Settings(_env_file=None)
+        assert settings.storage_local_path == Path("storage")
+
     def test_local_is_the_default(self, tmp_path):
         settings = Settings(_env_file=None, storage_local_directory=str(tmp_path))
         assert isinstance(build_object_storage(settings), LocalObjectStorage)
