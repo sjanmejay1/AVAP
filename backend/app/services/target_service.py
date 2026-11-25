@@ -51,7 +51,7 @@ class TargetService:
         """Append a TARGET-category audit event in the same transaction as
         the already-flushed target mutation, then commit both atomically.
 
-        Shared transaction (preferred pattern, see backend.md → "Audit
+        Shared transaction (preferred pattern, see docs/backend.md → "Audit
         event transaction pattern"): if the audit insert or its metadata
         validation fails, this raises before commit and the entire
         mutation (repository flush included) rolls back rather than being

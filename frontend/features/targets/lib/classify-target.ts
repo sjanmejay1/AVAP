@@ -92,6 +92,12 @@ function isValidHostname(value: string): boolean {
   return !(labels.length > 1 && labels.every((label) => /^[0-9]+$/.test(label)));
 }
 
+/** "localhost" and "*.localhost" always resolve to loopback (RFC 6761). */
+function isLoopbackName(value: string): boolean {
+  const labels = (value.endsWith(".") ? value.slice(0, -1) : value).split(".");
+  return labels[labels.length - 1] === "localhost";
+}
+
 export function classifyTarget(raw: string): TargetClassification {
   const value = raw.trim().toLowerCase();
 
@@ -108,6 +114,10 @@ export function classifyTarget(raw: string): TargetClassification {
 
   const cidr = classifyCidr(value);
   if (cidr) return cidr;
+
+  if (isLoopbackName(value)) {
+    return { ok: false, message: "Loopback names such as localhost can't be scanned." };
+  }
 
   if (isValidHostname(value)) return { ok: true, type: "HOSTNAME", addressCount: null };
 

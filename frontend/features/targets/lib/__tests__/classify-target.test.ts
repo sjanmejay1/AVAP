@@ -32,6 +32,9 @@ describe("classifyTarget", () => {
     ["127.0.0.0/24", /Loopback/],
     ["239.1.0.0/16", /multicast/],
     ["0.0.0.0/32", /unspecified/],
+    ["localhost", /localhost/],
+    ["LocalHost.", /localhost/],
+    ["app.localhost", /localhost/],
   ])("refuses the special address %s", (value, message) => {
     const result = classifyTarget(value);
     expect(result.ok).toBe(false);

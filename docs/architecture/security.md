@@ -304,7 +304,7 @@ distinct levels, and the distinction is deliberate:
   a trigger that rejects any `UPDATE`/`DELETE` on `audit_events`. This is
   genuine database-enforced append-only behavior, not merely an application
   convention — but it is not a cryptographic or tamper-evident guarantee
-  (no hash chaining is implemented); see `modules_docs/10_audit_logging.md`
+  (no hash chaining is implemented); see `docs/modules/10_audit_logging.md`
   for the exact guarantee boundary.
 
 Audit metadata is server-generated only, recursively validated against a

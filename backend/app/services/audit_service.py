@@ -25,7 +25,7 @@ class AuditService:
     `AuditEvent` onto the caller's existing session so the calling service
     controls whether it lands in the same transaction as the business
     action it documents (SUCCESS) or in a fresh transaction after a
-    business rollback (FAILURE). See modules_docs/10_audit_logging.md for
+    business rollback (FAILURE). See docs/modules/10_audit_logging.md for
     the exact transaction semantics guarantee.
 
     AuditService never audits its own operations (no recursive auditing),

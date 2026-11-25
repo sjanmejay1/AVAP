@@ -2,7 +2,7 @@
 
 **Module:** 02 - Scan Management
 
-**File:** `modules_docs/02_scan_management.md`
+**File:** `docs/modules/02_scan_management.md`
 
 **Version:** 1.0
 
@@ -562,9 +562,9 @@ business logic or persisted data shape:
 
 # Related Documentation
 
-- `modules_docs/01_target_validation.md`
-- `architecture_docs/system_architecture.md`
-- `architecture_docs/data_flow.md`
-- `architecture_docs/database.md`
-- `architecture_docs/security.md`
+- `docs/modules/01_target_validation.md`
+- `docs/architecture/system_architecture.md`
+- `docs/architecture/data_flow.md`
+- `docs/architecture/database.md`
+- `docs/architecture/security.md`
 - `backend/backend.md`

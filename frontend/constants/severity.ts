@@ -4,7 +4,7 @@
  * Vulnerability.severity_rating are two distinct backend taxonomies but both
  * use the same five-value scale, so both render through this one palette.
  * The neutral primary (black/white) must never appear here: color is
- * reserved for meaning (design_system.md §3).
+ * reserved for meaning (docs/design_system.md §3).
  *
  * Token values live in app/globals.css (foreground/background/border per
  * severity, plus the solid fill used by the overview severity bar).
@@ -24,7 +24,7 @@ interface SeverityMeta {
   textClass: string;
   /** Tailwind soft background utility for badges. */
   bgClass: string;
-  /** Tailwind border-color utility (design_system.md §21 badge recipe). */
+  /** Tailwind border-color utility (docs/design_system.md §21 badge recipe). */
   borderClass: string;
   /** Solid fill utility (the overview severity bar segments). */
   fillClass: string;

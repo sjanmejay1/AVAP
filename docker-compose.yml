@@ -1,7 +1,7 @@
 # AVAP — full stack: PostgreSQL + FastAPI backend (with Nmap) + Next.js UI.
 #
 # Configuration comes from a root-level `.env` file (copy env.docker.example
-# to `.env` and edit). See deployment.md for the complete guide.
+# to `.env` and edit). See README.md for the complete guide.
 #
 # The frontend and backend only communicate over REST — the browser calls
 # the backend directly at FRONTEND_API_BASE_URL, which is why that value is
@@ -93,7 +93,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
 
 volumes:
   avap_pgdata:

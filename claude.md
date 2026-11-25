@@ -84,7 +84,7 @@ current user; another user's resource returns 404. The broader deferrals
 above still stand.)
 
 
-These are deliberate deferrals documented in project.md, not gaps. Current architecture must not prevent them later, but must not implement them now.
+These are deliberate deferrals documented in docs/project.md, not gaps. Current architecture must not prevent them later, but must not implement them now.
 
 Conventions
 
@@ -99,11 +99,11 @@ Architectural changes require explicit owner approval. Do not redesign establish
 Reference docs
 
 
-Run.md — current "how to run this" (most authoritative, root)
-ai_contract.md — full engineering contract; this file is its working summary
-backend_api_manifest.yaml + Backend_Walk.md — API spec/walkthrough (gitignored, local-only)
-modules_docs/01–10 — per-module specs
-project.md — scope and deferred phases
+README.md — current "how to run this" (most authoritative, root)
+docs/ai_contract.md — full engineering contract; this file is its working summary
+docs/archive/ (backend_api_manifest.yaml, Backend_Walk.md, old Run.md) — API spec/walkthrough (gitignored, local-only)
+docs/modules/01–10 — per-module specs
+docs/project.md — scope and deferred phases
 
 
 If backend_api_manifest.yaml and running code disagree, trust the code and flag the drift.

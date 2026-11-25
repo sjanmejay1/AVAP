@@ -31,7 +31,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* Severity / risk-level semantics (design_system.md §3). RiskLevel and
+  /* Severity / risk-level semantics (docs/design_system.md §3). RiskLevel and
      severity_rating share one five-value scale, so both badges render
      through this palette. These are the only saturated colors in the
      interface: red critical, orange high, yellow medium, blue low, grey
@@ -77,7 +77,7 @@
   --radius-2xl: 12px;
   --radius-full: 9999px;
 
-  /* Type scale: 1.25 ratio on a 16px base (design_system.md §4). */
+  /* Type scale: 1.25 ratio on a 16px base (docs/design_system.md §4). */
   --text-display: 40px;
   --text-display--line-height: 46px;
   --text-display--font-weight: 600;
@@ -237,7 +237,7 @@
 
 @layer components {
   /* Archivo expanded: used for page titles so the target itself is the
-     headline (design_system.md §4). */
+     headline (docs/design_system.md §4). */
   .type-wide {
     font-variation-settings: "wdth" 118;
   }

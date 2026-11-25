@@ -1,6 +1,6 @@
 # Data Flow Architecture
 
-**File:** `architecture_docs/data_flow.md`
+**File:** `docs/architecture/data_flow.md`
 
 ---
 
@@ -23,7 +23,7 @@ Implementation specifications are documented in:
 
 - `system_architecture.md`
 - `backend/backend.md`
-- `modules_docs/*`
+- `docs/modules/*`
 
 ---
 

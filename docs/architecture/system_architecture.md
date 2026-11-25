@@ -17,7 +17,7 @@ It provides a high-level architectural view of the platform, its major component
 Detailed implementation specifications are documented separately within:
 
 - backend/
-- modules_docs/
+- docs/modules/
 - database.md
 - security.md
 - data_flow.md
@@ -662,9 +662,9 @@ The architecture adheres to the following principles:
 
 - `project.md` — Project overview and roadmap
 - `ai_contract.md` — Governing engineering contract
-- `architecture_docs/data_flow.md` — End-to-end request and scan workflows
-- `architecture_docs/database.md` — Database architecture and schema design
-- `architecture_docs/security.md` — Security architecture and trust boundaries
-- `architecture_docs/development_standards.md` — Coding conventions and engineering standards
+- `docs/architecture/data_flow.md` — End-to-end request and scan workflows
+- `docs/architecture/database.md` — Database architecture and schema design
+- `docs/architecture/security.md` — Security architecture and trust boundaries
+- `docs/architecture/development_standards.md` — Coding conventions and engineering standards
 - `backend/backend.md` — Backend implementation architecture
-- `modules_docs/` — Detailed specifications for each functional module
+- `docs/modules/` — Detailed specifications for each functional module

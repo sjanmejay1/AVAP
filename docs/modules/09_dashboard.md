@@ -4,7 +4,7 @@
 
 **Module:** 09 - Dashboard APIs
 
-**File:** `modules_docs/09_dashboard.md`
+**File:** `docs/modules/09_dashboard.md`
 
 **Version:** 1.0
 
@@ -684,10 +684,10 @@ The Dashboard APIs module is complete:
 
 # Related Documentation
 
-* `modules_docs/08_reporting.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/database.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/08_reporting.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/database.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`

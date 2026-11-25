@@ -4,7 +4,7 @@
 
 # Purpose
 
-> **Revision, 2026-11-21 (frontend phase).** Authentication now exists (see Authentication below). The product is targets → scans, not a dashboard: the dashboard, assets, audit and global findings, risk and vulnerability pages are gone. The visual system is black and white, with color reserved for meaning (see design_system.md §0). Recharts and Framer Motion were removed from the stack, and Zustand holds no state today. Where an older section below says otherwise, the revision wins.
+> **Revision, 2026-11-21 (frontend phase).** Authentication now exists (see Authentication below). The product is targets → scans, not a dashboard: the dashboard, assets, audit and global findings, risk and vulnerability pages are gone. The visual system is black and white, with color reserved for meaning (see docs/design_system.md §0). Recharts and Framer Motion were removed from the stack, and Zustand holds no state today. Where an older section below says otherwise, the revision wins.
 
 
 This document defines the complete frontend architecture for the Automated Vulnerability Assessment Platform (AVAP).

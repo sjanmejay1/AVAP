@@ -2,7 +2,7 @@ import type { ScanStatus } from "@/features/scans/types/scan";
 import { cn } from "@/lib/utils";
 
 /**
- * Symbolic colors (design_system.md §3): yellow waiting, blue running,
+ * Symbolic colors (docs/design_system.md §3): yellow waiting, blue running,
  * green completed, red failed, grey cancelled.
  */
 const STATUS_META: Record<ScanStatus, { label: string; className: string; pulse?: boolean }> = {

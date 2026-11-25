@@ -2,7 +2,7 @@
 
 **Project:** Automated Vulnerability Assessment Platform (AVAP)
 
-**File:** `architecture_docs/database.md`
+**File:** `docs/architecture/database.md`
 
 **Version:** 1.0
 
@@ -535,4 +535,4 @@ These enhancements should build upon the current relational design without alter
 - `data_flow.md` — Data movement throughout the platform
 - `security.md` — Security architecture
 - `backend/database.md` — SQLAlchemy models, migrations, repository implementation, and database access patterns
-- `modules_docs/` — Entity-specific behavior and module ownership
+- `docs/modules/` — Entity-specific behavior and module ownership

@@ -4,7 +4,7 @@ import "./globals.css";
 import { AppProviders } from "@/providers/app-providers";
 
 // Archivo is variable on both weight and width; the width axis is what the
-// wide page titles use (design_system.md §4).
+// wide page titles use (docs/design_system.md §4).
 const archivo = Archivo({
   variable: "--font-sans",
   subsets: ["latin"],

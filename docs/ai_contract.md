@@ -297,13 +297,13 @@ project.md
 
 ai_contract.md
 
-architecture_docs/
+docs/architecture/
 
 backend/
 
 frontend/
 
-modules_docs/
+docs/modules/
 ```
 
 Every document shall have a single responsibility.

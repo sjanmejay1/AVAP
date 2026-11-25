@@ -2,7 +2,7 @@
 
 **Module:** 07 - AI Engine
 
-**File:** `modules_docs/07_ai_engine.md`
+**File:** `docs/modules/07_ai_engine.md`
 
 **Version:** 1.0
 
@@ -688,9 +688,9 @@ Only after meeting all criteria may development proceed to the Reporting Engine 
 
 # Related Documentation
 
-* `modules_docs/06_risk_assessment.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/06_risk_assessment.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`

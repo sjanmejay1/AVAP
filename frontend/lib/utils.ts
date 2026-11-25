@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { extendTailwindMerge } from "tailwind-merge"
 
-// design_system.md §4 defines a custom named type scale (text-display, text-h1, text-h2, text-h3, text-title, text-caption,
+// docs/design_system.md §4 defines a custom named type scale (text-display, text-h1, text-h2, text-h3, text-title, text-caption,
 // text-micro) alongside Tailwind's own default font-size scale. Without
 // this, tailwind-merge doesn't know they conflict with e.g. "text-sm", so
 // a component overriding its base size via className (e.g. RiskScore's

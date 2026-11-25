@@ -76,6 +76,12 @@ def is_valid_hostname(hostname: str) -> bool:
 
     labels = hostname.split(".")
 
+    # "localhost" and every "*.localhost" name always resolve to loopback
+    # (RFC 6761 §6.3), which is refused for IP targets; refuse it here too so
+    # a user cannot point the scanner at the server itself by name.
+    if labels[-1].lower() == "localhost":
+        return False
+
     # Needs at least one label, though usually we expect a TLD (2+)
     # For flexibility in internal networks, we allow single labels
     if not labels:

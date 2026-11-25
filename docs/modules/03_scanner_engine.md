@@ -2,7 +2,7 @@
 
 **Module:** 03 - Scanner Engine
 
-**File:** `modules_docs/03_scanner_engine.md`
+**File:** `docs/modules/03_scanner_engine.md`
 
 **Version:** 1.0
 
@@ -502,9 +502,9 @@ Only after meeting all criteria may development proceed to the Parser Engine mod
 
 # Related Documentation
 
-* `modules_docs/02_scan_management.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/02_scan_management.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`

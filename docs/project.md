@@ -111,13 +111,13 @@ project-root/
 ├── project.md
 ├── README.md
 │
-├── architecture_docs/
+├── docs/architecture/
 │
 ├── backend/
 │
 ├── frontend/
 │
-└── modules_docs/
+└── docs/modules/
 ```
 
 Each directory has a clearly defined responsibility and should not contain duplicated documentation.
@@ -138,7 +138,7 @@ Provides the overall project blueprint, development roadmap, documentation map, 
 
 ---
 
-## architecture_docs/
+## docs/architecture/
 
 Contains architectural documentation including:
 
@@ -166,7 +166,7 @@ Reserved for future frontend documentation.
 
 ---
 
-## modules_docs/
+## docs/modules/
 
 Contains detailed specifications for every functional module.
 
@@ -372,7 +372,7 @@ For implementation standards:
 
 For architecture:
 
-- architecture_docs/
+- docs/architecture/
 
 For backend implementation:
 
@@ -380,4 +380,4 @@ For backend implementation:
 
 For module specifications:
 
-- modules_docs/
+- docs/modules/

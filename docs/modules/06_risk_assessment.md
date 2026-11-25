@@ -2,7 +2,7 @@
 
 **Module:** 06 - Risk Assessment
 
-**File:** `modules_docs/06_risk_assessment.md`
+**File:** `docs/modules/06_risk_assessment.md`
 
 **Version:** 1.0
 
@@ -408,7 +408,7 @@ Associated relationships:
 * scan_jobs
 
 The module owns only calculated risk records. See
-`architecture_docs/database.md` and Alembic revision `0004_risk_assessment`
+`docs/architecture/database.md` and Alembic revision `0004_risk_assessment`
 for the full schema.
 
 ---
@@ -728,10 +728,10 @@ Only after meeting all criteria may development proceed to the AI Engine module.
 
 # Related Documentation
 
-* `modules_docs/05_asset_vulnerability_management.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/database.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/05_asset_vulnerability_management.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/database.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`

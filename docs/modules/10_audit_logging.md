@@ -2,7 +2,7 @@
 
 **Module:** 10 - Audit Logging
 
-**File:** `modules_docs/10_audit_logging.md`
+**File:** `docs/modules/10_audit_logging.md`
 
 **Version:** 1.0
 
@@ -695,8 +695,8 @@ The Audit Logging module is complete:
   16 transaction semantics + 18 API + 8 context security + 1 full
   lifecycle integration); complete backend regression: 555 passed, 0
   failed (449-test baseline + 106), verified on Python 3.12.13 and 3.14.6
-* Documentation updated (this file, plus `architecture_docs/database.md`,
-  `architecture_docs/security.md`, `backend/backend.md`)
+* Documentation updated (this file, plus `docs/architecture/database.md`,
+  `docs/architecture/security.md`, `backend/backend.md`)
 
 Completion of this module marks the completion of the initial backend implementation phase.
 
@@ -704,11 +704,11 @@ Completion of this module marks the completion of the initial backend implementa
 
 # Related Documentation
 
-* `modules_docs/09_dashboard.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/database.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/09_dashboard.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/database.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`
 * `ai_contract.md`

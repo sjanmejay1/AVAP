@@ -33,6 +33,21 @@ def test_is_valid_hostname_rejects_valid_looking_ip():
 
 
 @pytest.mark.parametrize(
+    "loopback_name",
+    ["localhost", "LOCALHOST", "localhost.", "app.localhost", "db.Localhost"],
+)
+def test_is_valid_hostname_rejects_loopback_names(loopback_name):
+    """Names that always resolve to loopback are refused, like 127.0.0.0/8."""
+    assert is_valid_hostname(loopback_name) is False
+
+
+def test_is_valid_hostname_accepts_names_merely_containing_localhost():
+    """Only the reserved top-level label is refused, not lookalike names."""
+    assert is_valid_hostname("localhost.example.com") is True
+    assert is_valid_hostname("mylocalhost") is True
+
+
+@pytest.mark.parametrize(
     "valid_hostname",
     [
         "example.com",

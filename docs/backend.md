@@ -15,10 +15,10 @@ This document defines the backend implementation guidelines for the Automated Vu
 It serves as the primary reference for backend development and complements:
 
 - ai_contract.md
-- architecture_docs/system_architecture.md
-- architecture_docs/development_standards.md
-- architecture_docs/database.md
-- architecture_docs/security.md
+- docs/architecture/system_architecture.md
+- docs/architecture/development_standards.md
+- docs/architecture/database.md
+- docs/architecture/security.md
 
 Implementation should always follow these documents.
 
@@ -627,12 +627,12 @@ Only then should the next module begin.
 
 - `ai_contract.md`
 - `project.md`
-- `architecture_docs/system_architecture.md`
-- `architecture_docs/data_flow.md`
-- `architecture_docs/database.md`
-- `architecture_docs/security.md`
-- `architecture_docs/development_standards.md`
-- `modules_docs/`
+- `docs/architecture/system_architecture.md`
+- `docs/architecture/data_flow.md`
+- `docs/architecture/database.md`
+- `docs/architecture/security.md`
+- `docs/architecture/development_standards.md`
+- `docs/modules/`
 
 
 # Pre-Commit Quality Gate

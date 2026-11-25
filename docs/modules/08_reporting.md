@@ -2,7 +2,7 @@
 
 **Module:** 08 - Reporting Engine
 
-**File:** `modules_docs/08_reporting.md`
+**File:** `docs/modules/08_reporting.md`
 
 **Version:** 1.0
 
@@ -699,10 +699,10 @@ Only after meeting all criteria may development proceed to the Dashboard APIs mo
 
 # Related Documentation
 
-* `modules_docs/07_ai_engine.md`
-* `architecture_docs/system_architecture.md`
-* `architecture_docs/data_flow.md`
-* `architecture_docs/database.md`
-* `architecture_docs/security.md`
-* `architecture_docs/development_standards.md`
+* `docs/modules/07_ai_engine.md`
+* `docs/architecture/system_architecture.md`
+* `docs/architecture/data_flow.md`
+* `docs/architecture/database.md`
+* `docs/architecture/security.md`
+* `docs/architecture/development_standards.md`
 * `backend/backend.md`
