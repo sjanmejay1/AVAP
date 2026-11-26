@@ -5,9 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/features/reports/api/reports-api", () => ({
   reportsApi: {
     getReports: vi.fn(),
-    getReport: vi.fn(),
     generateReport: vi.fn(),
-    deleteReport: vi.fn(),
     downloadReport: vi.fn(),
   },
 }));
@@ -24,7 +22,7 @@ function wrapper(queryClient: QueryClient) {
 }
 
 describe("useGenerateReport — cache invalidation map", () => {
-  it("invalidates only reports/dashboard-summary/dashboard-reports — never risk, AI, assets, vulnerabilities, or scans", async () => {
+  it("invalidates only report lists — never risk, AI, vulnerabilities or scans", async () => {
     mockedGenerateReport.mockResolvedValue({
       id: "report-1",
       scan_id: "scan-1",
@@ -51,14 +49,6 @@ describe("useGenerateReport — cache invalidation map", () => {
 
     const invalidatedKeys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
 
-    expect(invalidatedKeys).toContainEqual(["reports", "list"]);
-    expect(invalidatedKeys).toContainEqual(["dashboard", "summary"]);
-    expect(invalidatedKeys).toContainEqual(["dashboard", "reports"]);
-
-    expect(invalidatedKeys.some((key) => Array.isArray(key) && key[0] === "risk")).toBe(false);
-    expect(invalidatedKeys.some((key) => Array.isArray(key) && key[0] === "ai")).toBe(false);
-    expect(invalidatedKeys).not.toContainEqual(["dashboard", "assets"]);
-    expect(invalidatedKeys).not.toContainEqual(["dashboard", "vulnerabilities"]);
-    expect(invalidatedKeys).not.toContainEqual(["dashboard", "scans"]);
+    expect(invalidatedKeys).toEqual([["reports", "list"]]);
   });
 });

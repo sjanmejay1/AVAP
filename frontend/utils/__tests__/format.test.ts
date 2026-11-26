@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   formatCount,
   formatDuration,
-  formatPercent,
+  formatElapsed,
   formatRiskScore,
+  formatUptime,
 } from "@/utils/format";
 
 describe("formatRiskScore", () => {
@@ -15,15 +16,6 @@ describe("formatRiskScore", () => {
   });
 });
 
-describe("formatPercent", () => {
-  it("formats with one decimal by default", () => {
-    expect(formatPercent(66.666)).toBe("66.7%");
-  });
-
-  it("formats a zero-denominator empty state as 0.0%, never NaN", () => {
-    expect(formatPercent(0)).toBe("0.0%");
-  });
-});
 
 describe("formatCount", () => {
   it("groups large counts with locale separators", () => {
@@ -51,5 +43,26 @@ describe("formatDuration", () => {
 
   it("renders hour-scale durations in hours and minutes", () => {
     expect(formatDuration(3725)).toBe("1h 2m");
+  });
+});
+
+describe("formatElapsed", () => {
+  it("ticks in a live-clock form with padded minutes and seconds", () => {
+    expect(formatElapsed(45)).toBe("45s");
+    expect(formatElapsed(724)).toBe("12m 04s");
+    expect(formatElapsed(3729)).toBe("1h 02m 09s");
+  });
+
+  it("never shows a negative clock", () => {
+    expect(formatElapsed(-5)).toBe("0s");
+  });
+});
+
+describe("formatUptime", () => {
+  it("shows the two largest units in words", () => {
+    expect(formatUptime(3 * 86_400 + 4 * 3_600 + 59)).toBe("3 days, 4 hours");
+    expect(formatUptime(3_600 + 5 * 60)).toBe("1 hour, 5 minutes");
+    expect(formatUptime(40)).toBe("40 seconds");
+    expect(formatUptime(0)).toBe("0 seconds");
   });
 });

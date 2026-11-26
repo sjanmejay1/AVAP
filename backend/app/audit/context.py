@@ -1,15 +1,11 @@
 """Actor and request context abstractions for audit logging.
 
-These are pure, framework-independent value objects. They exist so that
-AVAP can express "who/what triggered this action" and "which request does
-this belong to" without inventing a User model, authentication, or RBAC,
-and without passing FastAPI's `Request` object into business services.
-
-Future authentication can replace `ActorContext.anonymous()` resolution
-with a real authenticated-actor resolution without changing AuditService,
-AuditRepository, or the AuditEvent schema.
+These are pure, framework-independent value objects. They express "who or
+what triggered this action" and "which request does this belong to"
+without passing FastAPI's `Request` object into business services.
 """
 
+import uuid
 from dataclasses import dataclass
 
 from app.core.enums import AuditActorType
@@ -26,10 +22,9 @@ MAX_SOURCE_IP_LENGTH = 45  # longest valid textual IPv6 representation
 class ActorContext:
     """Who (or what) triggered an audited action.
 
-    Only SYSTEM and ANONYMOUS are constructible today, matching the current
-    lack of authentication. `actor_id` is always None for ANONYMOUS — a
-    client can never supply an actor identity that is trusted as if it were
-    an authenticated user.
+    `actor_id` is set only for USER, and only from a verified access token.
+    It is always None for SYSTEM and ANONYMOUS, so a client can never
+    supply an identity that is trusted as if it were authenticated.
     """
 
     actor_type: AuditActorType
@@ -44,6 +39,11 @@ class ActorContext:
     def system(cls) -> "ActorContext":
         """The actor for internal orchestration with no HTTP caller."""
         return cls(actor_type=AuditActorType.SYSTEM, actor_id=None)
+
+    @classmethod
+    def user(cls, user_id: uuid.UUID) -> "ActorContext":
+        """An authenticated user, identified only by the verified token."""
+        return cls(actor_type=AuditActorType.USER, actor_id=str(user_id))
 
 
 @dataclass(frozen=True)

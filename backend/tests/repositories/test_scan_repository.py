@@ -4,6 +4,7 @@ from app.core.enums import ScanStatus, TargetType
 from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.repositories.scan_repository import ScanRepository
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
@@ -13,7 +14,11 @@ def scan_repository(db_session):
 
 @pytest.fixture
 def test_target(db_session):
-    target = Target(target="192.168.1.100", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="192.168.1.100",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.commit()
     db_session.refresh(target)
@@ -22,6 +27,7 @@ def test_target(db_session):
 
 def test_create_scan_job(scan_repository, test_target):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created_scan = scan_repository.create(scan_job)
@@ -34,6 +40,7 @@ def test_create_scan_job(scan_repository, test_target):
 
 def test_get_scan_by_id(scan_repository, test_target):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created_scan = scan_repository.create(scan_job)
@@ -45,20 +52,23 @@ def test_get_scan_by_id(scan_repository, test_target):
 
 def test_get_all_scans(scan_repository, test_target):
     scan_job1 = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     scan_job2 = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="quick", status=ScanStatus.RUNNING
     )
     scan_repository.create(scan_job1)
     scan_repository.create(scan_job2)
 
-    scans = scan_repository.get_all()
+    scans = scan_repository.get_all(TEST_USER_ID)
     assert len(scans) >= 2
 
 
 def test_update_scan(scan_repository, test_target):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created_scan = scan_repository.create(scan_job)
@@ -71,6 +81,7 @@ def test_update_scan(scan_repository, test_target):
 
 def test_delete_scan(scan_repository, test_target):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created_scan = scan_repository.create(scan_job)
@@ -86,12 +97,15 @@ def test_get_running_scans(scan_repository, test_target):
     avoid a race where a second scan slips in during that window.
     """
     scan_job1 = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.RUNNING
     )
     scan_job2 = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="quick", status=ScanStatus.PENDING
     )
     scan_job3 = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="quick", status=ScanStatus.COMPLETED
     )
     scan_repository.create(scan_job1)
@@ -111,6 +125,7 @@ def test_get_running_scans(scan_repository, test_target):
 
 def test_create_does_not_commit(scan_repository, test_target, db_session):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created = scan_repository.create(scan_job)
@@ -124,6 +139,7 @@ def test_create_does_not_commit(scan_repository, test_target, db_session):
 
 def test_update_does_not_commit(scan_repository, test_target, db_session):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created = scan_repository.create(scan_job)
@@ -139,6 +155,7 @@ def test_update_does_not_commit(scan_repository, test_target, db_session):
 
 def test_delete_does_not_commit(scan_repository, test_target, db_session):
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=test_target.id, scan_type="full", status=ScanStatus.PENDING
     )
     created = scan_repository.create(scan_job)

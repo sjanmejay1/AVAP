@@ -9,15 +9,13 @@ def test_execution_validator_valid_requests():
     validator = ExecutionValidator()
 
     # Valid IPv4
-    validator.validate_request("192.168.1.1", ScannerType.NMAP, ScanProfile.DISCOVERY)
-    validator.validate_request("192.168.1.1", ScannerType.OPENVAS, ScanProfile.FULL)
+    validator.validate_request("192.168.1.1", ScannerType.NMAP, ScanProfile.QUICK)
 
     # Valid Hostname
-    validator.validate_request("example.com", ScannerType.NMAP, ScanProfile.PORT_SCAN)
-    validator.validate_request("localhost", ScannerType.OPENVAS, ScanProfile.DISCOVERY)
+    validator.validate_request("example.com", ScannerType.NMAP, ScanProfile.QUICK)
 
-    # Valid CIDR (Nmap only)
-    validator.validate_request("10.0.0.0/24", ScannerType.NMAP, ScanProfile.DISCOVERY)
+    # Valid CIDR
+    validator.validate_request("10.0.0.0/24", ScannerType.NMAP, ScanProfile.QUICK)
 
 
 def test_execution_validator_invalid_targets():
@@ -25,7 +23,7 @@ def test_execution_validator_invalid_targets():
 
     # Empty target
     with pytest.raises(ValidationException) as exc:
-        validator.validate_request("", ScannerType.NMAP, ScanProfile.DISCOVERY)
+        validator.validate_request("", ScannerType.NMAP, ScanProfile.QUICK)
     assert "Target value cannot be empty" in str(exc.value)
 
     # Invalid target formats
@@ -37,19 +35,8 @@ def test_execution_validator_invalid_targets():
     ]
     for t in invalid_targets:
         with pytest.raises(ValidationException) as exc:
-            validator.validate_request(t, ScannerType.NMAP, ScanProfile.DISCOVERY)
+            validator.validate_request(t, ScannerType.NMAP, ScanProfile.QUICK)
         assert "Invalid target format" in str(exc.value)
-
-
-def test_execution_validator_unsupported_targets():
-    validator = ExecutionValidator()
-
-    # OpenVAS should reject CIDRs (based on validator config in execution_validator.py)
-    with pytest.raises(ValidationException) as exc:
-        validator.validate_request(
-            "192.168.1.0/24", ScannerType.OPENVAS, ScanProfile.FULL
-        )
-    assert "does not support target type 'cidr'" in str(exc.value)
 
 
 def test_execution_validator_shell_characters():
@@ -65,4 +52,4 @@ def test_execution_validator_shell_characters():
     ]
     for t in injection_targets:
         with pytest.raises(ValidationException):
-            validator.validate_request(t, ScannerType.NMAP, ScanProfile.DISCOVERY)
+            validator.validate_request(t, ScannerType.NMAP, ScanProfile.QUICK)

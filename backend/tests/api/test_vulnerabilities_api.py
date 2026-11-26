@@ -9,6 +9,7 @@ from app.models.scan_finding import ScanFinding
 from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
@@ -37,7 +38,33 @@ def sample_vulnerabilities(db_session):
     )
     db_session.add_all([v1, v2, v3])
     db_session.flush()
+    _link_to_owned_scan(db_session, [v1, v2, v3])
     return {"v1": v1, "v2": v2, "v3": v3}
+
+
+def _link_to_owned_scan(db_session, vulnerabilities):
+    """Vulnerabilities are visible only through the user's own scan findings."""
+    target = Target(
+        user_id=TEST_USER_ID, target="10.0.9.9", target_type=TargetType.IPV4
+    )
+    db_session.add(target)
+    db_session.flush()
+    scan = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        scan_type="FULL",
+        status=ScanStatus.COMPLETED,
+    )
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.0.9.9")
+    db_session.add_all([scan, asset])
+    db_session.flush()
+    db_session.add_all(
+        [
+            ScanFinding(scan_id=scan.id, asset_id=asset.id, vulnerability_id=v.id)
+            for v in vulnerabilities
+        ]
+    )
+    db_session.flush()
 
 
 # --- List ---
@@ -86,12 +113,21 @@ def test_list_vulnerabilities_scan_id_filtering(
 ):
     """scan_id scopes the list to findings linked to that one scan — the
     Scan Detail page's Security Analysis section depends on this."""
-    target = Target(target="10.0.3.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.0.3.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
-    scan = ScanJob(target_id=target.id, scan_type="full", status=ScanStatus.COMPLETED)
-    asset = Asset(ipv4="10.0.3.1")
+    scan = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        scan_type="full",
+        status=ScanStatus.COMPLETED,
+    )
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.0.3.1")
     db_session.add_all([scan, asset])
     db_session.flush()
 
@@ -112,6 +148,7 @@ def test_list_vulnerabilities_scan_id_filtering(
 
     # A scan with no findings returns an empty, well-formed list.
     other_scan = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, scan_type="full", status=ScanStatus.COMPLETED
     )
     db_session.add(other_scan)

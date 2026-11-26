@@ -20,6 +20,7 @@ from app.repositories.risk_repository import RiskRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.ai_service import AIService
 from app.services.audit_service import AuditService
+from tests.auth_helpers import TEST_USER_ID
 from tests.services.test_ai_service import FakeAIManager
 
 
@@ -43,17 +44,22 @@ def override_ai_service(db_session):
 
 @pytest.fixture
 def vulnerability_risk_assessment(db_session):
-    target = Target(target="10.50.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.50.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(scan_job)
     db_session.flush()
 
-    asset = Asset(ipv4="10.50.0.1")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.50.0.1")
     db_session.add(asset)
     db_session.flush()
 
@@ -149,7 +155,7 @@ def test_list_providers(client: TestClient):
     response = client.get("/api/v1/ai/providers")
     assert response.status_code == 200
     data = response.json()["data"]
-    assert "openrouter" in data["supported_providers"]
+    assert data["supported_providers"] == ["openrouter"]
     assert data["active_provider"] == AIManager().resolve_provider_name()
 
 

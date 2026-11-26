@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Sequence
 
 from app.audit.context import AuditContext
+from app.core.config import get_settings
 from app.core.enums import (
     AuditEventCategory,
     AuditEventType,
@@ -10,8 +11,13 @@ from app.core.enums import (
     AuditResourceType,
     TargetType,
 )
-from app.core.exceptions import NotFoundException, ValidationException
+from app.core.exceptions import (
+    DuplicateException,
+    NotFoundException,
+    ValidationException,
+)
 from app.core.security import (
+    cidr_exceeds_scope,
     is_valid_hostname,
     is_valid_ipv4,
     is_valid_ipv4_cidr,
@@ -45,7 +51,7 @@ class TargetService:
         """Append a TARGET-category audit event in the same transaction as
         the already-flushed target mutation, then commit both atomically.
 
-        Shared transaction (preferred pattern, see backend.md → "Audit
+        Shared transaction (preferred pattern, see docs/backend.md → "Audit
         event transaction pattern"): if the audit insert or its metadata
         validation fails, this raises before commit and the entire
         mutation (repository flush included) rolls back rather than being
@@ -100,8 +106,29 @@ class TargetService:
             },
         )
 
+    def _enforce_cidr_scope(self, target_value: str, target_type: TargetType) -> None:
+        """Reject CIDR targets broader than the configured minimum prefix.
+
+        Raises:
+            ValidationException: If the range exceeds MIN_CIDR_PREFIX_LENGTH.
+        """
+        if target_type != TargetType.CIDR:
+            return
+        min_prefix = get_settings().min_cidr_prefix_length
+        if cidr_exceeds_scope(target_value, min_prefix):
+            raise ValidationException(
+                message=(
+                    f"CIDR range '{target_value}' is too broad; the narrowest "
+                    f"allowed prefix is /{min_prefix}."
+                ),
+                details={"target": target_value, "min_prefix_length": min_prefix},
+            )
+
     def create_target(
-        self, request: CreateTargetRequest, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        request: CreateTargetRequest,
+        audit_context: AuditContext | None = None,
     ) -> Target:
         """Process and persist a new target.
 
@@ -116,24 +143,20 @@ class TargetService:
 
         # 2. Validate format and classify type
         target_type = self._determine_target_type(normalized_value)
+        self._enforce_cidr_scope(normalized_value, target_type)
 
         # 3. Prevent duplicates
-        existing = self.repository.get_by_value(normalized_value)
+        existing = self.repository.get_by_value(normalized_value, user_id)
         if existing:
-            # Re-throw as validation exception to match business rules?
-            # Or rely on repository's DuplicateException?
-            # Since repository throws DuplicateException on IntegrityError,
-            # we can proactively throw it here to avoid burning sequence numbers,
-            # but raising it directly keeps things clean.
-            from app.core.exceptions import DuplicateException
-
             raise DuplicateException(
                 message=f"Target '{normalized_value}' already exists.",
                 details={"target": normalized_value},
             )
 
         # 4. Construct model and persist
-        target = Target(target=normalized_value, target_type=target_type)
+        target = Target(
+            target=normalized_value, target_type=target_type, user_id=user_id
+        )
         created = self.repository.create(target)
 
         self._commit_with_audit(
@@ -144,7 +167,7 @@ class TargetService:
         )
         return created
 
-    def get_target(self, target_id: uuid.UUID) -> Target:
+    def get_target(self, target_id: uuid.UUID, user_id: uuid.UUID) -> Target:
         """Retrieve a single target by ID.
 
         Args:
@@ -156,13 +179,13 @@ class TargetService:
         Raises:
             NotFoundException: If the target does not exist.
         """
-        target = self.repository.get_by_id(target_id)
+        target = self.repository.get_by_id(target_id, user_id)
         if not target:
             raise NotFoundException(message=f"Target not found: {target_id}")
         return target
 
     def get_all_targets(
-        self, skip: int = 0, limit: int = 50
+        self, user_id: uuid.UUID, skip: int = 0, limit: int = 50
     ) -> tuple[Sequence[Target], int]:
         """Retrieve all targets with pagination.
 
@@ -173,10 +196,11 @@ class TargetService:
         Returns:
             Tuple of (targets, total_count).
         """
-        return self.repository.get_all(skip=skip, limit=limit)
+        return self.repository.get_all(user_id=user_id, skip=skip, limit=limit)
 
     def update_target(
         self,
+        user_id: uuid.UUID,
         target_id: uuid.UUID,
         request: UpdateTargetRequest,
         audit_context: AuditContext | None = None,
@@ -191,17 +215,16 @@ class TargetService:
             The updated Target model.
         """
         # Retrieve existing
-        target = self.get_target(target_id)
+        target = self.get_target(target_id, user_id)
 
         # Normalize and validate new value
         normalized_value = normalize_target_value(request.target)
         target_type = self._determine_target_type(normalized_value)
+        self._enforce_cidr_scope(normalized_value, target_type)
 
         # Check for duplicates on update (excluding self)
-        existing = self.repository.get_by_value(normalized_value)
+        existing = self.repository.get_by_value(normalized_value, user_id)
         if existing and existing.id != target_id:
-            from app.core.exceptions import DuplicateException
-
             raise DuplicateException(
                 message=f"Target '{normalized_value}' already exists.",
                 details={"target": normalized_value},
@@ -222,14 +245,17 @@ class TargetService:
         return updated
 
     def delete_target(
-        self, target_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        target_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> None:
         """Delete a target.
 
         Args:
             target_id: The UUID of the target.
         """
-        target = self.get_target(target_id)
+        target = self.get_target(target_id, user_id)
         target_id_value = target.id
         target_type_value = target.target_type.value
         self.repository.delete(target)

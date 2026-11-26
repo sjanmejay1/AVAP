@@ -24,6 +24,7 @@ from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
 from app.services.report_service import ReportService
+from tests.auth_helpers import TEST_USER_ID
 
 
 def _service(db_session, tmp_path: Path) -> ReportService:
@@ -44,10 +45,19 @@ def _service(db_session, tmp_path: Path) -> ReportService:
 
 @pytest.fixture
 def scan_job(db_session):
-    target = Target(target="203.0.113.50", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.50",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -98,7 +108,7 @@ def test_get_report_file_path_rejects_traversal(
     service = _service(db_session, tmp_path)
 
     with pytest.raises(ReportStorageException):
-        service.get_report_file_path(report.id)
+        service.get_report_file_path(TEST_USER_ID, report.id)
 
 
 def test_get_report_file_path_accepts_normal_server_filename(
@@ -110,7 +120,7 @@ def test_get_report_file_path_accepts_normal_server_filename(
     service = _service(db_session, tmp_path)
     (tmp_path / report.file_name).write_bytes(b"%PDF-1.4 test")
 
-    resolved = service.get_report_file_path(report.id)
+    resolved = service.get_report_file_path(TEST_USER_ID, report.id)
     assert resolved.is_relative_to(tmp_path.resolve())
 
 

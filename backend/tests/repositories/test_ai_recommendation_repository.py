@@ -12,6 +12,7 @@ from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
 from app.repositories.ai_recommendation_repository import AIRecommendationRepository
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
@@ -26,17 +27,22 @@ def vulnerability(db_session):
 
 @pytest.fixture
 def risk_assessment(db_session, vulnerability):
-    target = Target(target="10.30.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.30.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(scan_job)
     db_session.flush()
 
-    asset = Asset(ipv4="10.30.0.1")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.30.0.1")
     db_session.add(asset)
     db_session.flush()
 

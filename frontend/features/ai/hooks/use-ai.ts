@@ -28,11 +28,9 @@ export function useAiRecommendation(assessmentId: string) {
  *
  * On success, `setQueryData` applies the authoritative mutation response
  * directly (not optimistic — this is the real backend result), avoiding an
- * extra round-trip. Only `dashboard/ai` coverage is invalidated; Risk
- * queries are never touched — generating a recommendation does not read,
- * write, or otherwise affect risk_assessments (verified in
- * app/services/ai_service.py: it only calls risk_repository.get_by_id,
- * never any write method).
+ * extra round-trip. Nothing is invalidated: generating a recommendation
+ * does not write risk_assessments (app/services/ai_service.py only calls
+ * risk_repository.get_by_id).
  */
 export function useGenerateRecommendation() {
   const queryClient = useQueryClient();
@@ -40,7 +38,6 @@ export function useGenerateRecommendation() {
     mutationFn: (assessmentId: string) => aiApi.generateRecommendation(assessmentId),
     onSuccess: (data, assessmentId) => {
       queryClient.setQueryData(aiKeys.recommendation(assessmentId), data);
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "ai"] });
     },
   });
 }

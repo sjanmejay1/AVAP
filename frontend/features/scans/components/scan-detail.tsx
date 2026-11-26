@@ -1,298 +1,187 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, OctagonX, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { CopyableValue } from "@/components/shared/copyable-value";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScanStatusBadge } from "@/components/shared/scan-status-badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AssetList } from "@/features/assets/components/asset-list";
-import { assetKeys } from "@/features/assets/hooks/query-keys";
-import { dashboardKeys } from "@/features/dashboard/hooks/query-keys";
-import { ScanReportsSection } from "@/features/reports/components/scan-reports-section";
-import { RiskList } from "@/features/risk/components/risk-list";
-import { ScanRiskSection } from "@/features/risk/components/scan-risk-section";
-import { DeleteScanDialog } from "@/features/scans/components/delete-scan-dialog";
-import { scanKeys } from "@/features/scans/hooks/query-keys";
+import { PageSkeleton } from "@/components/shared/skeletons";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScanActions } from "@/features/scans/components/scan-actions";
+import { ScanStatusBand } from "@/features/scans/components/scan-status-band";
+import { AiTab } from "@/features/scans/components/tabs/ai-tab";
+import { FindingsTab } from "@/features/scans/components/tabs/findings-tab";
+import { HostsTab } from "@/features/scans/components/tabs/hosts-tab";
+import { OverviewTab } from "@/features/scans/components/tabs/overview-tab";
+import { PortsTab } from "@/features/scans/components/tabs/ports-tab";
+import { RawTab } from "@/features/scans/components/tabs/raw-tab";
+import { scanProfileLabel } from "@/features/scans/constants/scan-profiles";
 import {
   isTerminalScanStatus,
-  useCancelScan,
+  useRefreshFinishedScan,
   useScan,
   useScanStatus,
 } from "@/features/scans/hooks/use-scans";
-import type { ScanStatus } from "@/features/scans/types/scan";
+import type { ScanResponse, ScanStatus } from "@/features/scans/types/scan";
 import { useTarget } from "@/features/targets/hooks/use-targets";
-import { VulnerabilityList } from "@/features/vulnerabilities/components/vulnerability-list";
-import { vulnerabilityKeys } from "@/features/vulnerabilities/hooks/query-keys";
-import { formatDateTime, formatDuration, formatLabel } from "@/utils/format";
+import { ApiError } from "@/lib/api/errors";
+import { formatDateTime } from "@/utils/format";
 
-function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+export const SCAN_TABS = [
+  { value: "overview", label: "Overview" },
+  { value: "hosts", label: "Hosts" },
+  { value: "ports", label: "Ports & services" },
+  { value: "findings", label: "Findings" },
+  { value: "ai", label: "AI advice" },
+  { value: "raw", label: "Raw output" },
+] as const;
+
+export type ScanTab = (typeof SCAN_TABS)[number]["value"];
+
+export function resolveScanTab(raw: string | null): ScanTab {
+  return SCAN_TABS.some((tab) => tab.value === raw) ? (raw as ScanTab) : "overview";
+}
+
+function NoResults({ scan, status }: { scan: ScanResponse; status: ScanStatus }) {
+  const message =
+    status === "FAILED"
+      ? "This scan failed, so there are no results."
+      : status === "CANCELLED"
+        ? "This scan was cancelled before it finished, so there are no results."
+        : "Results appear here when the scan finishes.";
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="text-sm text-foreground">{children}</div>
-    </div>
+    <p className="rounded-lg border border-dashed border-border px-6 py-10 text-sm text-muted-foreground">
+      {message}
+      {status === "FAILED" && scan.failure_reason ? ` ${scan.failure_reason}` : ""}
+    </p>
   );
+}
+
+/**
+ * Watches the polled status and, the moment it turns terminal, re-reads
+ * the full record and everything the finished scan populated.
+ */
+function useFinishWatcher(scanId: string, status: ScanStatus | undefined) {
+  const refresh = useRefreshFinishedScan();
+  const previous = useRef<ScanStatus | undefined>(undefined);
+
+  useEffect(() => {
+    if (!status) return;
+    if (previous.current && previous.current !== status && isTerminalScanStatus(status)) {
+      refresh(scanId);
+    }
+    previous.current = status;
+  }, [status, scanId, refresh]);
 }
 
 export function ScanDetail({ scanId }: { scanId: string }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [rawOutputOpen, setRawOutputOpen] = useState(false);
-  const { data: scan, isPending, isError, refetch } = useScan(scanId);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = resolveScanTab(searchParams.get("tab"));
+
+  const { data: scan, isPending, isError, error, refetch } = useScan(scanId);
   const { data: statusData } = useScanStatus(scanId);
   const { data: target } = useTarget(scan?.target_id ?? "");
-  const previousStatusRef = useRef<ScanStatus | undefined>(undefined);
-  const { mutate: cancelScan, isPending: isCancelling } = useCancelScan();
+  const status = statusData?.status ?? scan?.status;
+  useFinishWatcher(scanId, statusData?.status);
 
-  // Lifecycle observation: when the polled lightweight status transitions
-  // into a terminal state, pull the final full record (completed_at,
-  // execution_duration, failure_reason) and refresh the read models it
-  // affects — including the asset inventory and vulnerability findings the
-  // completed scan just populated (AI discovery runs server-side as part
-  // of scan completion). This never triggers risk/AI/report orchestration
-  // itself — it only re-reads what the backend has already persisted.
-  useEffect(() => {
-    const currentStatus = statusData?.status;
-    if (!currentStatus) return;
-    const previousStatus = previousStatusRef.current;
-    if (
-      previousStatus &&
-      previousStatus !== currentStatus &&
-      isTerminalScanStatus(currentStatus)
-    ) {
-      queryClient.invalidateQueries({ queryKey: scanKeys.detail(scanId) });
-      queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: assetKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: vulnerabilityKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "scans"] });
-    }
-    previousStatusRef.current = currentStatus;
-  }, [statusData?.status, queryClient, scanId]);
-
-  if (isPending) {
-    return (
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6">
-        <Skeleton className="h-8 w-64" />
-        <Card>
-          <CardContent className="flex flex-col gap-4">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
+  function selectTab(value: string) {
+    const next = resolveScanTab(value);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
-  if (isError || !scan) {
+  if (isPending) return <PageSkeleton />;
+
+  if (isError || !scan || !status) {
+    const notFound = error instanceof ApiError && error.code === "NOT_FOUND";
     return (
-      <div className="mx-auto flex max-w-[1600px] flex-col">
-        <PageHeader title="Scan" />
+      <div className="flex flex-col">
+        <PageHeader title="Scan" breadcrumbs={[{ label: "Targets", href: "/targets" }]} />
         <ErrorState
-          title="Unable to load this scan"
-          description="The scan record could not be retrieved."
-          onRetry={() => refetch()}
+          title={notFound ? "This scan doesn't exist" : "This scan couldn't be loaded"}
+          description={
+            notFound ? "It may have been deleted, or it belongs to another account." : undefined
+          }
+          onRetry={notFound ? undefined : () => refetch()}
         />
       </div>
     );
   }
 
-  const isRunning = scan.status === "RUNNING";
-
-  function handleCancel() {
-    if (isCancelling) return;
-    cancelScan(scanId, {
-      onSuccess: () => {
-        toast.success("Cancellation requested — the scan will stop shortly");
-      },
-      onError: (error) => {
-        toast.error(error.message);
-      },
-    });
-  }
+  const targetLabel = target?.target ?? "Target";
+  const isLive = !isTerminalScanStatus(status);
+  const startedLabel = formatDateTime(scan.started_at ?? scan.created_at);
+  const hasResults = status === "COMPLETED";
+  const noResults = <NoResults scan={scan} status={status} />;
 
   return (
-    <div className="mx-auto flex max-w-[1600px] flex-col">
+    <div className="flex flex-col">
       <PageHeader
-        title={`${formatLabel(scan.scan_type)} Scan`}
-        actions={
-          <div className="flex items-center gap-2">
-            {isRunning && (
-              <Button variant="outline" onClick={handleCancel} disabled={isCancelling}>
-                <OctagonX className="size-4" aria-hidden="true" />
-                {isCancelling ? "Cancelling…" : "Stop Scan"}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => setDeleteOpen(true)}
-              disabled={isRunning}
-              title={isRunning ? "Cannot delete a running scan" : undefined}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete
-            </Button>
-          </div>
+        wide
+        title={targetLabel}
+        breadcrumbs={[
+          { label: "Targets", href: "/targets" },
+          { label: targetLabel, href: `/targets/${scan.target_id}` },
+          { label: `Scan of ${startedLabel}` },
+        ]}
+        description={
+          <span className="flex flex-wrap items-center gap-3">
+            <ScanStatusBadge status={status} />
+            <span>
+              {scanProfileLabel(scan.scan_type)} scan, started {startedLabel}
+            </span>
+          </span>
         }
+        actions={<ScanActions scan={{ ...scan, status }} targetId={scan.target_id} />}
       />
 
-      <Card>
-        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <DetailField label="Target">
-            {target ? (
-              <CopyableValue value={target.target} />
-            ) : (
-              <span className="font-mono text-xs text-muted-foreground">
-                {scan.target_id}
-              </span>
-            )}
-          </DetailField>
+      {isLive && <ScanStatusBand scan={scan} status={status} />}
 
-          <DetailField label="Status">
-            <ScanStatusBadge status={scan.status} />
-          </DetailField>
-
-          <DetailField label="Started">
-            {scan.started_at ? formatDateTime(scan.started_at) : "Not started yet"}
-          </DetailField>
-
-          <DetailField label="Completed">
-            {scan.completed_at ? formatDateTime(scan.completed_at) : "—"}
-          </DetailField>
-
-          <DetailField label="Duration">
-            {formatDuration(scan.execution_duration)}
-          </DetailField>
-
-          <DetailField label="Requested">{formatDateTime(scan.created_at)}</DetailField>
-
-          {scan.failure_reason && (
-            <div className="col-span-full flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Failure reason</span>
-              <p className="rounded-md border border-destructive-border bg-destructive-bg px-3 py-2 text-sm text-destructive">
-                {scan.failure_reason}
-              </p>
-            </div>
-          )}
-
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Discovered Hosts &amp; Services</CardTitle>
-          <CardDescription>
-            What the scanner found — hosts, operating systems, open ports,
-            protocols, running services, and detected versions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AssetList scanId={scan.scan_id} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Security Analysis</CardTitle>
-          <CardDescription>
-            Potential vulnerabilities for this scan&apos;s discovered services.
-            Entries marked AI-assisted are inferences from service and version
-            banners — not scanner-confirmed results.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <VulnerabilityList scanId={scan.scan_id} />
-        </CardContent>
-      </Card>
-
-      <ScanRiskSection scanId={scan.scan_id} scanStatus={scan.status} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Findings &amp; Remediation</CardTitle>
-          <CardDescription>
-            Deterministic risk-scored findings from the Risk Engine. Open a
-            vulnerability finding to generate advisory AI remediation guidance.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RiskList scanId={scan.scan_id} />
-        </CardContent>
-      </Card>
-
-      <ScanReportsSection scanId={scan.scan_id} scanStatus={scan.status} />
-
-      {(scan.stdout_log || scan.stderr_log) && (
-        <Card>
-          <CardHeader>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 text-left"
-              onClick={() => setRawOutputOpen((prev) => !prev)}
-              aria-expanded={rawOutputOpen}
-            >
-              {rawOutputOpen ? (
-                <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
-              ) : (
-                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
-              )}
-              <CardTitle>Raw Scanner Output</CardTitle>
-            </button>
-            <CardDescription>
-              Unprocessed scanner logs
-              {scan.status === "CANCELLED" || scan.status === "RUNNING"
-                ? " (partial — scan was stopped before finishing)"
-                : ""}
-              . Everything above is parsed and normalized from this output.
-            </CardDescription>
-          </CardHeader>
-          {rawOutputOpen && (
-            <CardContent className="flex flex-col gap-3">
-              {scan.stdout_log && (
-                <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 px-3 py-2 font-mono text-xs text-foreground whitespace-pre-wrap">
-                  {scan.stdout_log}
-                </pre>
-              )}
-              {scan.stderr_log && (
-                <pre className="max-h-80 overflow-auto rounded-md border border-destructive-border bg-destructive-bg px-3 py-2 font-mono text-xs text-destructive whitespace-pre-wrap">
-                  {scan.stderr_log}
-                </pre>
-              )}
-            </CardContent>
-          )}
-        </Card>
+      {status === "FAILED" && scan.failure_reason && (
+        <div
+          role="alert"
+          className="mb-8 rounded-lg border border-destructive-border bg-destructive-bg px-4 py-3 text-sm text-destructive"
+        >
+          <p className="font-medium">The scan failed.</p>
+          <p className="mt-0.5">{scan.failure_reason}</p>
+        </div>
       )}
 
-      <Link
-        href={`/audit?scan_id=${scan.scan_id}`}
-        className="w-fit text-sm text-primary hover:underline"
-      >
-        View audit history for this scan →
-      </Link>
+      <Tabs value={tab} onValueChange={selectTab}>
+        <TabsList aria-label="Scan sections">
+          {SCAN_TABS.map((item) => (
+            <TabsTrigger key={item.value} value={item.value}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <DeleteScanDialog
-        scan={scan}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onDeleted={() => router.push("/scans")}
-      />
+        <TabsContent value="overview">
+          <OverviewTab scan={{ ...scan, status }} />
+        </TabsContent>
+        {/* Hosts, ports and findings only exist once a scan has completed. */}
+        <TabsContent value="hosts">
+          {hasResults ? <HostsTab scanId={scan.scan_id} /> : noResults}
+        </TabsContent>
+        <TabsContent value="ports">
+          {hasResults ? <PortsTab scanId={scan.scan_id} /> : noResults}
+        </TabsContent>
+        <TabsContent value="findings">
+          {hasResults ? <FindingsTab scan={scan} /> : noResults}
+        </TabsContent>
+        <TabsContent value="ai">
+          <AiTab scan={{ ...scan, status }} />
+        </TabsContent>
+        <TabsContent value="raw">
+          <RawTab scan={{ ...scan, status }} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -4,24 +4,29 @@ from app.core.enums import TargetType
 from app.core.exceptions import DuplicateException
 from app.models.target import Target
 from app.repositories.target_repository import TargetRepository
+from tests.auth_helpers import TEST_USER_ID
 
 
 def test_create_and_get_target(db_session):
     repo = TargetRepository(db_session)
 
-    target = Target(target="192.168.1.100", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="192.168.1.100",
+        target_type=TargetType.IPV4,
+    )
     created = repo.create(target)
 
     assert created.id is not None
     assert created.target == "192.168.1.100"
 
     # Retrieve by ID
-    retrieved = repo.get_by_id(created.id)
+    retrieved = repo.get_by_id(created.id, TEST_USER_ID)
     assert retrieved is not None
     assert retrieved.id == created.id
 
     # Retrieve by value
-    retrieved_by_value = repo.get_by_value("192.168.1.100")
+    retrieved_by_value = repo.get_by_value("192.168.1.100", TEST_USER_ID)
     assert retrieved_by_value is not None
     assert retrieved_by_value.id == created.id
 
@@ -29,10 +34,18 @@ def test_create_and_get_target(db_session):
 def test_create_duplicate_target_raises_exception(db_session):
     repo = TargetRepository(db_session)
 
-    target1 = Target(target="duplicate.com", target_type=TargetType.HOSTNAME)
+    target1 = Target(
+        user_id=TEST_USER_ID,
+        target="duplicate.com",
+        target_type=TargetType.HOSTNAME,
+    )
     repo.create(target1)
 
-    target2 = Target(target="duplicate.com", target_type=TargetType.HOSTNAME)
+    target2 = Target(
+        user_id=TEST_USER_ID,
+        target="duplicate.com",
+        target_type=TargetType.HOSTNAME,
+    )
     with pytest.raises(DuplicateException):
         repo.create(target2)
 
@@ -42,13 +55,17 @@ def test_get_all_pagination(db_session):
 
     # Create 5 targets
     for i in range(5):
-        repo.create(Target(target=f"10.0.0.{i}", target_type=TargetType.IPV4))
+        repo.create(Target(
+            user_id=TEST_USER_ID,
+            target=f"10.0.0.{i}",
+            target_type=TargetType.IPV4,
+        ))
 
-    items, total = repo.get_all(skip=0, limit=3)
+    items, total = repo.get_all(TEST_USER_ID, skip=0, limit=3)
     assert total == 5
     assert len(items) == 3
 
-    items, total = repo.get_all(skip=3, limit=3)
+    items, total = repo.get_all(TEST_USER_ID, skip=3, limit=3)
     assert total == 5
     assert len(items) == 2
 
@@ -56,7 +73,11 @@ def test_get_all_pagination(db_session):
 def test_update_target(db_session):
     repo = TargetRepository(db_session)
 
-    target = Target(target="192.168.1.50", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="192.168.1.50",
+        target_type=TargetType.IPV4,
+    )
     created = repo.create(target)
 
     created.target = "192.168.1.51"
@@ -65,7 +86,7 @@ def test_update_target(db_session):
     assert updated.target == "192.168.1.51"
 
     # Verify in DB
-    retrieved = repo.get_by_id(created.id)
+    retrieved = repo.get_by_id(created.id, TEST_USER_ID)
     assert retrieved is not None
     assert retrieved.target == "192.168.1.51"
 
@@ -73,12 +94,16 @@ def test_update_target(db_session):
 def test_delete_target(db_session):
     repo = TargetRepository(db_session)
 
-    target = Target(target="10.1.1.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.1.1.1",
+        target_type=TargetType.IPV4,
+    )
     created = repo.create(target)
 
     repo.delete(created)
 
-    assert repo.get_by_id(created.id) is None
+    assert repo.get_by_id(created.id, TEST_USER_ID) is None
 
 
 # --- Repository never commits ---
@@ -86,18 +111,26 @@ def test_delete_target(db_session):
 
 def test_create_does_not_commit(db_session):
     repo = TargetRepository(db_session)
-    created = repo.create(Target(target="10.5.5.1", target_type=TargetType.IPV4))
+    created = repo.create(Target(
+        user_id=TEST_USER_ID,
+        target="10.5.5.1",
+        target_type=TargetType.IPV4,
+    ))
     created_id = created.id
 
     # Rolling back must undo the write, proving the repository only flushed.
     db_session.rollback()
 
-    assert repo.get_by_id(created_id) is None
+    assert repo.get_by_id(created_id, TEST_USER_ID) is None
 
 
 def test_update_does_not_commit(db_session):
     repo = TargetRepository(db_session)
-    created = repo.create(Target(target="10.5.5.2", target_type=TargetType.IPV4))
+    created = repo.create(Target(
+        user_id=TEST_USER_ID,
+        target="10.5.5.2",
+        target_type=TargetType.IPV4,
+    ))
     db_session.commit()
     db_session.refresh(created)
 
@@ -105,18 +138,22 @@ def test_update_does_not_commit(db_session):
     repo.update(created)
     db_session.rollback()
 
-    reloaded = repo.get_by_id(created.id)
+    reloaded = repo.get_by_id(created.id, TEST_USER_ID)
     assert reloaded is not None
     assert reloaded.target == "10.5.5.2"
 
 
 def test_delete_does_not_commit(db_session):
     repo = TargetRepository(db_session)
-    created = repo.create(Target(target="10.5.5.4", target_type=TargetType.IPV4))
+    created = repo.create(Target(
+        user_id=TEST_USER_ID,
+        target="10.5.5.4",
+        target_type=TargetType.IPV4,
+    ))
     db_session.commit()
     created_id = created.id
 
     repo.delete(created)
     db_session.rollback()
 
-    assert repo.get_by_id(created_id) is not None
+    assert repo.get_by_id(created_id, TEST_USER_ID) is not None

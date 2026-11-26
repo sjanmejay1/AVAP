@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.audit import get_audit_context, get_audit_service
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
 from app.core.enums import RiskLevel, RiskScope
+from app.models.user import User
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.risk_repository import RiskRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
@@ -37,19 +39,25 @@ def get_risk_service(
 @router.get(
     "",
     response_model=SuccessResponse[RiskAssessmentListResponse],
-    summary="Get all risk assessments",
+    summary="Get a scan's risk assessments",
 )
 def list_risk_assessments(
     skip: int = Query(0, ge=0, description="Offset for pagination"),
     limit: int = Query(50, ge=1, le=200, description="Max records to return"),
     scope: RiskScope | None = Query(None, description="Filter by risk scope"),
     risk_level: RiskLevel | None = Query(None, description="Filter by risk level"),
-    scan_id: uuid.UUID | None = Query(None, description="Filter by scan"),
+    scan_id: uuid.UUID = Query(..., description="The scan to list"),
     service: RiskService = Depends(get_risk_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Retrieve a paginated, filtered list of all persisted risk assessments."""
+    """Retrieve a paginated, filtered list of one owned scan's assessments."""
     items, total = service.get_risk_assessments(
-        skip=skip, limit=limit, scope=scope, risk_level=risk_level, scan_id=scan_id
+        current_user.id,
+        scan_id,
+        skip=skip,
+        limit=limit,
+        scope=scope,
+        risk_level=risk_level,
     )
     responses = [RiskAssessmentResponse.model_validate(item) for item in items]
     return {"data": RiskAssessmentListResponse(risk_assessments=responses, total=total)}
@@ -65,9 +73,12 @@ def get_risk_by_asset(
     skip: int = Query(0, ge=0, description="Offset for pagination"),
     limit: int = Query(50, ge=1, le=200, description="Max records to return"),
     service: RiskService = Depends(get_risk_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve the paginated asset-level risk history for a specific asset."""
-    items, total = service.get_risk_by_asset(asset_id, skip=skip, limit=limit)
+    items, total = service.get_risk_by_asset(
+        current_user.id, asset_id, skip=skip, limit=limit
+    )
     responses = [RiskAssessmentResponse.model_validate(item) for item in items]
     return {"data": RiskAssessmentListResponse(risk_assessments=responses, total=total)}
 
@@ -80,9 +91,10 @@ def get_risk_by_asset(
 def get_risk_by_scan(
     scan_id: uuid.UUID,
     service: RiskService = Depends(get_risk_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve the calculated risk assessment for a specific scan."""
-    risk = service.get_risk_by_scan(scan_id)
+    risk = service.get_risk_by_scan(current_user.id, scan_id)
     return {"data": RiskAssessmentResponse.model_validate(risk)}
 
 
@@ -94,6 +106,7 @@ def get_risk_by_scan(
 def calculate_risk_for_scan(
     scan_id: uuid.UUID,
     service: RiskService = Depends(get_risk_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Trigger deterministic risk calculation for a scan's persisted findings.
@@ -101,18 +114,7 @@ def calculate_risk_for_scan(
     Safe to call repeatedly: recalculation updates existing risk records in
     place using the same deterministic rules.
     """
-    risk = service.calculate_risk_for_scan(scan_id, audit_context=audit_context)
+    risk = service.calculate_risk_for_scan(
+        scan_id, audit_context=audit_context, owner_id=current_user.id
+    )
     return {"data": RiskAssessmentResponse.model_validate(risk)}
-
-
-@router.get(
-    "/summary",
-    response_model=SuccessResponse[RiskAssessmentResponse],
-    summary="Get overall assessment risk summary",
-)
-def get_summary(
-    service: RiskService = Depends(get_risk_service),
-) -> dict:
-    """Retrieve the overall, system-wide assessment risk summary."""
-    summary = service.get_summary()
-    return {"data": RiskAssessmentResponse.model_validate(summary)}

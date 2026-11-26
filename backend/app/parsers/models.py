@@ -56,6 +56,15 @@ class ParsedService(BaseModel):
     vulnerabilities: list[ParsedVulnerability] = Field(
         default_factory=list, description="Vulnerabilities detected on this service"
     )
+    # Extended fields (populated by full-profile scans)
+    state: str = Field("open", description="Port state (open, open|filtered)")
+    cpes: list[str] = Field(
+        default_factory=list, description="CPE strings for this service"
+    )
+    scripts: dict[str, str] = Field(
+        default_factory=dict,
+        description="Script id -> truncated output map (from -sC / --script)",
+    )
 
 
 class ParsedHost(BaseModel):
@@ -66,6 +75,36 @@ class ParsedHost(BaseModel):
     operating_system: str | None = Field(None, description="Detected operating system")
     services: list[ParsedService] = Field(
         default_factory=list, description="Services found open on this host"
+    )
+    # Extended fields (populated by full-profile scans)
+    mac_address: str | None = Field(
+        None, description="MAC address if available (LAN scan)"
+    )
+    mac_vendor: str | None = Field(None, description="MAC vendor string from Nmap")
+    all_hostnames: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="All hostnames reported by Nmap [{name, type}, ...]",
+    )
+    os_matches: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="OS match list [{name, accuracy, cpes, classes}, ...]",
+    )
+    uptime_seconds: int | None = Field(None, description="Host uptime in seconds")
+    uptime_last_boot: str | None = Field(None, description="Last boot timestamp string")
+    network_distance: int | None = Field(None, description="Network distance in hops")
+    traceroute_hops: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Traceroute hop list [{ttl, ipaddr, rtt, host}, ...]",
+    )
+    closed_port_count: int = Field(
+        0, description="Number of closed ports (from extraports)"
+    )
+    filtered_port_count: int = Field(
+        0, description="Number of filtered ports (from extraports)"
+    )
+    host_vulnerabilities: list[ParsedVulnerability] = Field(
+        default_factory=list,
+        description="Vulnerabilities reported by host-level NSE scripts",
     )
 
 

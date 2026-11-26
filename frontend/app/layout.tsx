@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Archivo, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/shared/app-shell";
 import { AppProviders } from "@/providers/app-providers";
 
-const inter = Inter({
+// Archivo is variable on both weight and width; the width axis is what the
+// wide page titles use (docs/design_system.md §4).
+const archivo = Archivo({
   variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
+  axes: ["wdth"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -17,9 +19,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AVAP — Automated Vulnerability Assessment Platform",
+  title: {
+    default: "AVAP",
+    template: "%s | AVAP",
+  },
   description:
-    "Enterprise security posture, risk, and vulnerability management dashboard.",
+    "Scan your own hosts and networks with Nmap, see what is exposed, and get a risk-scored PDF report.",
 };
 
 export default function RootLayout({
@@ -31,12 +36,10 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${archivo.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        <AppProviders>
-          <AppShell>{children}</AppShell>
-        </AppProviders>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

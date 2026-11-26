@@ -1,10 +1,7 @@
 # AVAP — PostgreSQL + FastAPI backend (with Nmap) + Next.js UI.
 #
-# One compose file, used everywhere. Routing is declared here with Traefik
-# labels rather than in the Dokploy UI: the UI only injects labels into
-# services that already have a `labels:` block, which is why the frontend
-# was never given a router and fell through to Traefik's catch-all
-# ("404 page not found" under TRAEFIK DEFAULT CERT).
+# Configuration comes from a root-level `.env` file (copy env.docker.example
+# to `.env` and edit). See README.md for the complete guide.
 #
 # Set in the Dokploy Environment tab (or a local .env file):
 #
@@ -51,35 +48,41 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-avap}
       POSTGRES_USER: ${POSTGRES_USER:-avap_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
-      # The UI is served over https, so the allowed origin is https too.
-      CORS_ALLOWED_ORIGINS: https://${FRONTEND_DOMAIN:?Set FRONTEND_DOMAIN}
-      SCAN_TIMEOUT: ${SCAN_TIMEOUT:-300}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # New accounts allowed per client IP per hour (open registration).
+      REGISTRATIONS_PER_IP_PER_HOUR: ${REGISTRATIONS_PER_IP_PER_HOUR:-10}
+      # Auth secrets: no defaults, the backend refuses to start without them.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY in .env}
+      # Raw scan output: "local" (the avap_storage volume) or "s3".
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_SERVER_SIDE_ENCRYPTION: ${S3_SERVER_SIDE_ENCRYPTION:-AES256}
+      # Read by boto3 directly (or use an IAM role and leave these empty).
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      SCAN_TIMEOUT: ${SCAN_TIMEOUT:-900}
+      NMAP_SCAN_MODE: ${NMAP_SCAN_MODE:-auto}
+      # Users supply their own OpenRouter keys in the app; free models only.
       AI_PROVIDER: openrouter
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
-      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-30}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}
+      OPENROUTER_DATA_COLLECTION: ${OPENROUTER_DATA_COLLECTION:-allow}
+      AI_FINDINGS_IN_RISK: ${AI_FINDINGS_IN_RISK:-false}
+      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-60}
       AI_MAX_TOKENS: ${AI_MAX_TOKENS:-1024}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - avap_scan_output:/data/scan_output
+      - avap_storage:/data/storage
       - avap_reports:/data/generated_reports
       - avap_logs:/data/logs
-    # `default` reaches the database; `dokploy-network` is where Traefik looks.
-    networks:
-      - default
-      - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      # Multi-homed container — tell Traefik which IP to route to.
-      - "traefik.docker.network=dokploy-network"
-      - "traefik.http.routers.avap-backend.rule=Host(`${BACKEND_DOMAIN:?Set BACKEND_DOMAIN}`)"
-      - "traefik.http.routers.avap-backend.entrypoints=websecure"
-      - "traefik.http.routers.avap-backend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.avap-backend.loadbalancer.server.port=8000"
-      - "traefik.http.routers.avap-backend-http.rule=Host(`${BACKEND_DOMAIN}`)"
-      - "traefik.http.routers.avap-backend-http.entrypoints=web"
-      - "traefik.http.routers.avap-backend-http.middlewares=avap-https"
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    cap_add:
+      - NET_RAW
 
   frontend:
     build:
@@ -93,27 +96,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.avap-frontend.rule=Host(`${FRONTEND_DOMAIN:?Set FRONTEND_DOMAIN}`)"
-      - "traefik.http.routers.avap-frontend.entrypoints=websecure"
-      - "traefik.http.routers.avap-frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.avap-frontend.loadbalancer.server.port=3000"
-      - "traefik.http.routers.avap-frontend-http.rule=Host(`${FRONTEND_DOMAIN}`)"
-      - "traefik.http.routers.avap-frontend-http.entrypoints=web"
-      - "traefik.http.routers.avap-frontend-http.middlewares=avap-https"
-      # Defined once here; referenced by both services above.
-      - "traefik.http.middlewares.avap-https.redirectscheme.scheme=https"
-
-networks:
-  # Created by Dokploy on install; shared with the Traefik container.
-  dokploy-network:
-    external: true
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
 
 volumes:
   avap_pgdata:
   avap_scan_output:
+  avap_storage:
   avap_reports:
   avap_logs:

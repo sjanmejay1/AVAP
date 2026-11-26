@@ -90,10 +90,10 @@ export function RecommendationPanel({
       <EmptyState
         icon={Sparkles}
         title="No remediation guidance yet"
-        description="AI-assisted remediation guidance generated from the current vulnerability and deterministic risk context. Advisory only — not a guaranteed fix."
+        description="Generated from this finding and its risk score with your OpenRouter key. Advisory only, not a guaranteed fix."
         action={
           <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
-            {isGenerating ? "Generating remediation guidance…" : "Generate Remediation"}
+            {isGenerating ? "Generating remediation advice…" : "Generate remediation advice"}
           </Button>
         }
       />
@@ -129,11 +129,11 @@ export function RecommendationPanel({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Generated {formatRelativeTime(recommendation.generated_at)} ·{" "}
-          {recommendation.provider} / {recommendation.model}
+          Generated {formatRelativeTime(recommendation.generated_at)} by{" "}
+          <span className="font-mono">{recommendation.model}</span>
         </p>
         <Button variant="outline" size="sm" onClick={handleGenerate} disabled={isGenerating}>
-          {isGenerating ? "Generating…" : isFresh ? "Regenerate" : "Generate Remediation"}
+          {isGenerating ? "Generating…" : isFresh ? "Regenerate" : "Generate remediation advice"}
         </Button>
       </div>
 
@@ -145,14 +145,14 @@ export function RecommendationPanel({
       </section>
 
       <section>
-        <h3 className="text-title text-foreground">Why This Matters</h3>
+        <h3 className="text-title text-foreground">Why this matters</h3>
         <p className="mt-1 text-sm break-words whitespace-pre-line text-foreground">
           {recommendation.explanation}
         </p>
       </section>
 
-      <StepList title="Remediation Steps" steps={recommendation.remediation_steps} ordered />
-      <StepList title="Validation Steps" steps={recommendation.validation_steps} ordered />
+      <StepList title="Remediation steps" steps={recommendation.remediation_steps} ordered />
+      <StepList title="Validation steps" steps={recommendation.validation_steps} ordered />
 
       {recommendation.cautions.length > 0 && (
         <section>

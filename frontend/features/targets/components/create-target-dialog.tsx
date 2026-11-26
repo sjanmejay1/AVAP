@@ -3,9 +3,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
+import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,8 +18,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useCreateTarget } from "@/features/targets/hooks/use-targets";
+import {
+  classifyTarget,
+  describeClassification,
+} from "@/features/targets/lib/classify-target";
 import {
   createTargetSchema,
   type CreateTargetFormValues,
@@ -29,12 +33,7 @@ function isFieldLevelError(code: string): boolean {
   return code === "VALIDATION_ERROR" || code === "CONFLICT";
 }
 
-export function CreateTargetDialog({
-  trigger,
-}: {
-  /** Custom trigger element (e.g. an EmptyState CTA). Defaults to a "New Target" button. */
-  trigger?: React.ReactNode;
-}) {
+export function CreateTargetDialog({ trigger }: { trigger?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { mutate, isPending } = useCreateTarget();
   const {
@@ -42,14 +41,19 @@ export function CreateTargetDialog({
     handleSubmit,
     reset,
     setError,
+    control,
     formState: { errors },
   } = useForm<CreateTargetFormValues>({
     resolver: zodResolver(createTargetSchema),
     defaultValues: { target: "" },
   });
+  const value = useWatch({ control, name: "target" });
+  const hint = value.trim()
+    ? describeClassification(classifyTarget(value))
+    : "Only scan hosts and networks you own or are allowed to test.";
 
   function handleOpenChange(next: boolean) {
-    if (isPending) return; // prevent closing mid-submit
+    if (isPending) return;
     setOpen(next);
     if (!next) reset();
   }
@@ -57,7 +61,7 @@ export function CreateTargetDialog({
   function onSubmit(values: CreateTargetFormValues) {
     mutate(values, {
       onSuccess: () => {
-        toast.success("Target created");
+        toast.success("Target added");
         reset();
         setOpen(false);
       },
@@ -76,8 +80,8 @@ export function CreateTargetDialog({
       <DialogTrigger asChild>
         {trigger ?? (
           <Button>
-            <Plus className="size-4" aria-hidden="true" />
-            New Target
+            <Plus aria-hidden="true" />
+            Add target
           </Button>
         )}
       </DialogTrigger>
@@ -85,35 +89,30 @@ export function CreateTargetDialog({
         <DialogHeader>
           <DialogTitle>Add a target</DialogTitle>
           <DialogDescription>
-            Register an IPv4 address, IPv4 CIDR range, or hostname for
-            assessment. The platform validates and classifies the value
-            before it is added to inventory.
+            An IPv4 address, a CIDR range up to /16, or a hostname.
           </DialogDescription>
         </DialogHeader>
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="target">Target</Label>
-            <Input
-              id="target"
-              placeholder="192.168.1.10, 10.0.0.0/24, or example.com"
-              autoComplete="off"
-              autoFocus
-              disabled={isPending}
-              aria-invalid={Boolean(errors.target)}
-              aria-describedby={errors.target ? "target-error" : undefined}
-              {...register("target")}
-            />
-            {errors.target && (
-              <p id="target-error" role="alert" className="text-sm text-destructive">
-                {errors.target.message}
-              </p>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
+          <FormField
+            id="target"
+            label="Target"
+            error={errors.target?.message}
+            hint={errors.target ? undefined : hint}
+          >
+            {(a11y) => (
+              <Input
+                {...a11y}
+                placeholder="192.168.1.10, 10.0.0.0/24 or example.com"
+                autoComplete="off"
+                spellCheck={false}
+                autoFocus
+                disabled={isPending}
+                className="font-mono"
+                {...register("target")}
+              />
             )}
-          </div>
+          </FormField>
 
           <DialogFooter>
             <Button
@@ -125,7 +124,7 @@ export function CreateTargetDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Adding…" : "Add Target"}
+              {isPending ? "Adding…" : "Add target"}
             </Button>
           </DialogFooter>
         </form>

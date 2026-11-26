@@ -44,6 +44,20 @@ def is_valid_ipv4_cidr(cidr_str: str) -> bool:
         return False
 
 
+def cidr_exceeds_scope(cidr_str: str, min_prefix_length: int) -> bool:
+    """Return True if a valid IPv4 CIDR is broader than the allowed prefix.
+
+    Args:
+        cidr_str: An IPv4 CIDR string already accepted by is_valid_ipv4_cidr.
+        min_prefix_length: The smallest prefix length (largest range) allowed.
+
+    Returns:
+        True when the network's prefix length is below the minimum.
+    """
+    network = ipaddress.IPv4Network(cidr_str, strict=False)
+    return network.prefixlen < min_prefix_length
+
+
 def is_valid_hostname(hostname: str) -> bool:
     """Validate if a string is an RFC-compliant hostname.
 
@@ -61,6 +75,12 @@ def is_valid_hostname(hostname: str) -> bool:
         hostname = hostname[:-1]
 
     labels = hostname.split(".")
+
+    # "localhost" and every "*.localhost" name always resolve to loopback
+    # (RFC 6761 §6.3), which is refused for IP targets; refuse it here too so
+    # a user cannot point the scanner at the server itself by name.
+    if labels[-1].lower() == "localhost":
+        return False
 
     # Needs at least one label, though usually we expect a TLD (2+)
     # For flexibility in internal networks, we allow single labels

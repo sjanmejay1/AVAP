@@ -26,6 +26,12 @@ class ScanJob(Base, TimestampMixin):
         ForeignKey("targets.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
+    # Denormalized from the target so ownership checks and the background
+    # worker (which needs the owner's AI key) don't require a join.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus), nullable=False, default=ScanStatus.PENDING
     )
@@ -44,6 +50,11 @@ class ScanJob(Base, TimestampMixin):
     # Path to the scanner's raw output file (e.g. Nmap XML), populated even
     # for cancelled/timed-out runs since scanners flush output incrementally.
     output_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+    # Object-storage key of the raw output once uploaded (S3 or local store).
+    # output_file_path is cleared after a successful upload and kept only
+    # as a fallback when the upload fails.
+    output_object_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     stdout_log: Mapped[str | None] = mapped_column(Text, nullable=True)
     stderr_log: Mapped[str | None] = mapped_column(Text, nullable=True)

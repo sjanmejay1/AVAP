@@ -1,10 +1,26 @@
 backend_api_manifest.yaml
 Backend_Walk.md
 handoff.md
-readme.md
 Run.md
 .env
 .env*
 deployment.md
 docker-data/
 volumes/
+.declutter-trash/
+.claude/
+logs/
+generated_reports/
+docs/archive/
+audit/
+.venv
+.ruff_cache/
+.mypy_cache/
+.uv_env/
+
+# Raw scan output and the local object store (may contain sensitive data).
+# Anchored: an unanchored "storage/" would also hide backend/app/storage/.
+scan_output/
+object_store/
+/backend/storage/
+/storage/

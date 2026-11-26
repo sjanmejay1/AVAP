@@ -78,10 +78,10 @@ describe("RecommendationPanel — content rendering and security", () => {
 
     expect(await screen.findByText("Summary")).toBeInTheDocument();
     expect(screen.getByText("Upgrade the affected package to the patched version.")).toBeInTheDocument();
-    expect(screen.getByText("Why This Matters")).toBeInTheDocument();
-    expect(screen.getByText("Remediation Steps")).toBeInTheDocument();
+    expect(screen.getByText("Why this matters")).toBeInTheDocument();
+    expect(screen.getByText("Remediation steps")).toBeInTheDocument();
     expect(screen.getByText("Update the package.")).toBeInTheDocument();
-    expect(screen.getByText("Validation Steps")).toBeInTheDocument();
+    expect(screen.getByText("Validation steps")).toBeInTheDocument();
     expect(screen.getByText("Re-scan the asset.")).toBeInTheDocument();
     expect(screen.getByText("Cautions")).toBeInTheDocument();
     expect(screen.getByText("Test in staging first.")).toBeInTheDocument();

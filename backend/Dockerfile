@@ -1,8 +1,13 @@
 # AVAP Backend — FastAPI + Nmap
 #
 # Python 3.12 (documented stack floor). Nmap is installed in the image
-# because the scanner engine invokes it as a subprocess (unprivileged
-# -sT/-sn scans only, so no extra capabilities or root are required).
+# because the scanner engine invokes it as a subprocess. The image grants
+# cap_net_raw to the nmap binary (setcap) so the non-root avap user can
+# run privileged scans (-sS, -O) when the container has NET_RAW capability.
+# See docker-compose.yml: cap_add: [NET_RAW]. For non-root + caps, the
+# adapter passes nmap --privileged so nmap honours the kernel capability
+# rather than its own geteuid()==0 check. Without NET_RAW the adapter
+# falls back automatically to the -sT unprivileged variant.
 FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,8 +17,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # nmap: invoked by the scanner adapter (NMAP_EXECUTABLE=/usr/bin/nmap).
 # curl: used by the container healthcheck against GET /health.
+# libcap2-bin: provides setcap, used to grant cap_net_raw to the nmap binary
+#   so the non-root avap user can run SYN/OS-detect scans when the container
+#   has NET_RAW capability (cap_add: [NET_RAW] in docker-compose.yml).
+#   NOTE: If NET_RAW capability is unavailable (e.g., cap_drop ALL), nmap
+#   will fail with exit code 1 and stderr "requires root privileges". The
+#   NmapAdapter detects this privilege error and retries with the -sT
+#   unprivileged fallback automatically; if -sT also fails (no network
+#   access), the scan status is set to FAILED.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nmap curl \
+    && apt-get install -y --no-install-recommends nmap curl libcap2-bin \
+    && setcap cap_net_raw+eip /usr/bin/nmap \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user. Nmap's connect/ping scans need no privileges.
@@ -42,11 +56,12 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Writable data directories (scan output, generated reports, logs).
 # Named volumes mounted here inherit this ownership on first use.
-RUN mkdir -p /data/scan_output /data/generated_reports /data/logs \
+RUN mkdir -p /data/scan_output /data/storage /data/generated_reports /data/logs \
     && chown -R avap:avap /data /app
 
 ENV PYTHONPATH=/app \
     SCANNER_OUTPUT_DIRECTORY=/data/scan_output \
+    STORAGE_LOCAL_DIRECTORY=/data/storage \
     REPORT_OUTPUT_DIRECTORY=/data/generated_reports \
     LOG_DIRECTORY=/data/logs \
     NMAP_EXECUTABLE=/usr/bin/nmap

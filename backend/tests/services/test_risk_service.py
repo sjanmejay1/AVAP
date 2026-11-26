@@ -19,11 +19,12 @@ from app.repositories.scan_finding_repository import ScanFindingRepository
 from app.repositories.scan_repository import ScanRepository
 from app.services.audit_service import AuditService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def target(db_session):
-    t = Target(target="172.16.0.1", target_type=TargetType.IPV4)
+    t = Target(user_id=TEST_USER_ID, target="172.16.0.1", target_type=TargetType.IPV4)
     db_session.add(t)
     db_session.flush()
     return t
@@ -31,7 +32,12 @@ def target(db_session):
 
 @pytest.fixture
 def scan_job(db_session, target):
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -50,7 +56,7 @@ def risk_service(db_session):
 
 
 def _seed_finding(db_session, scan_job, ip, severity_score, severity_rating, port=443):
-    asset = Asset(ipv4=ip)
+    asset = Asset(user_id=TEST_USER_ID, ipv4=ip)
     db_session.add(asset)
     db_session.flush()
 
@@ -90,22 +96,17 @@ def test_calculate_risk_for_missing_scan_raises(risk_service):
 
 def test_get_risk_by_asset_missing_asset_raises(risk_service):
     with pytest.raises(NotFoundException):
-        risk_service.get_risk_by_asset(uuid.uuid4())
+        risk_service.get_risk_by_asset(TEST_USER_ID, uuid.uuid4())
 
 
 def test_get_risk_by_scan_missing_scan_raises(risk_service):
     with pytest.raises(NotFoundException):
-        risk_service.get_risk_by_scan(uuid.uuid4())
+        risk_service.get_risk_by_scan(TEST_USER_ID, uuid.uuid4())
 
 
 def test_get_risk_by_scan_not_yet_calculated_raises(risk_service, scan_job):
     with pytest.raises(NotFoundException):
-        risk_service.get_risk_by_scan(scan_job.id)
-
-
-def test_get_summary_raises_when_none_calculated(risk_service):
-    with pytest.raises(NotFoundException):
-        risk_service.get_summary()
+        risk_service.get_risk_by_scan(TEST_USER_ID, scan_job.id)
 
 
 # --- Empty findings ---
@@ -140,7 +141,7 @@ def test_calculate_risk_single_finding(db_session, risk_service, scan_job):
     assert len(vuln_records) == 1
     assert vuln_records[0].vulnerability_id == vulnerability.id
 
-    asset_records, _ = risk_service.get_risk_by_asset(asset.id)
+    asset_records, _ = risk_service.get_risk_by_asset(TEST_USER_ID, asset.id)
     assert len(asset_records) == 1
     assert asset_records[0].risk_score == 7.0
 
@@ -199,23 +200,6 @@ def test_recalculation_after_finding_change_updates_score(
 # --- Assessment-level aggregation across scans ---
 
 
-def test_assessment_summary_reflects_worst_scan(db_session, risk_service, target):
-    scan_a = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
-    scan_b = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
-    db_session.add_all([scan_a, scan_b])
-    db_session.flush()
-
-    _seed_finding(db_session, scan_a, "192.168.90.1", 2.0, "Low")
-    _seed_finding(db_session, scan_b, "192.168.90.2", 8.8, "High")
-
-    risk_service.calculate_risk_for_scan(scan_a.id)
-    risk_service.calculate_risk_for_scan(scan_b.id)
-
-    summary = risk_service.get_summary()
-    assert summary.risk_score == 8.8
-    assert summary.risk_level == RiskLevel.HIGH
-
-
 # --- Transaction rollback leaves no partial state ---
 
 
@@ -257,6 +241,7 @@ def test_get_risk_assessments_filters_by_scan_id(
     scans' risk assessments — this is what lets the Scan Detail page show
     only this scan's vulnerability findings for the Remediation action."""
     other_scan = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(other_scan)
@@ -269,7 +254,7 @@ def test_get_risk_assessments_filters_by_scan_id(
     risk_service.calculate_risk_for_scan(other_scan.id)
 
     items, total = risk_service.get_risk_assessments(
-        scope=RiskScope.VULNERABILITY, scan_id=scan_job.id
+        TEST_USER_ID, scan_job.id, scope=RiskScope.VULNERABILITY
     )
     assert total == 1
     assert items[0].scan_id == scan_job.id

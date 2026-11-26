@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from sqlalchemy import select
 
 from app.audit.context import ActorContext, AuditContext, RequestContext
 from app.core.enums import (
@@ -10,7 +11,7 @@ from app.core.enums import (
     AuditOutcome,
     AuditResourceType,
 )
-from app.core.exceptions import NotFoundException, UnsafeAuditMetadataException
+from app.core.exceptions import UnsafeAuditMetadataException
 from app.models.audit_event import AuditEvent
 from app.repositories.audit_repository import AuditRepository
 from app.services.audit_service import AuditService
@@ -124,8 +125,14 @@ def test_record_failure_safely_persists_failure_event(db_session, service):
         resource_id=uuid.uuid4(),
         metadata={"failure_category": "RuntimeError"},
     )
-    events, total = service.list_events(outcome=AuditOutcome.FAILURE)
-    assert total == 1
+    events = (
+        db_session.execute(
+            select(AuditEvent).where(AuditEvent.outcome == AuditOutcome.FAILURE)
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events) == 1
     assert events[0].event_type == AuditEventType.RISK_CALCULATION_FAILED
 
 
@@ -148,29 +155,3 @@ def test_record_failure_safely_never_raises_on_unsafe_metadata(db_session, servi
 
 
 # --- Retrieval ---
-
-
-def test_get_event_returns_persisted_event(db_session, service):
-    event = service.append_event(
-        event_type=AuditEventType.TARGET_DELETED,
-        category=AuditEventCategory.TARGET,
-        outcome=AuditOutcome.SUCCESS,
-        context=AuditContext.system(),
-        resource_type=AuditResourceType.TARGET,
-        resource_id=uuid.uuid4(),
-    )
-    db_session.commit()
-
-    fetched = service.get_event(event.id)
-    assert fetched.id == event.id
-
-
-def test_get_event_missing_raises_not_found(service):
-    with pytest.raises(NotFoundException):
-        service.get_event(uuid.uuid4())
-
-
-def test_list_events_empty_database_returns_empty(service):
-    events, total = service.list_events()
-    assert events == []
-    assert total == 0

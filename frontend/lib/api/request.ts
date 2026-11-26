@@ -34,3 +34,32 @@ export async function requestVoid(
     throw normalizeApiError(error);
   }
 }
+
+/**
+ * For endpoints that return a file (PDF report, raw Nmap XML) instead of an
+ * envelope. With `responseType: "blob"` an error body also arrives as a
+ * Blob, so it is parsed back into the envelope before normalizing; that
+ * keeps the backend's sanitized message (e.g. "no raw output stored").
+ */
+export async function requestBlob(
+  requestPromise: Promise<AxiosResponse<Blob>>
+): Promise<Blob> {
+  try {
+    const response = await requestPromise;
+    return response.data;
+  } catch (error) {
+    throw normalizeApiError(await withParsedBlobBody(error));
+  }
+}
+
+async function withParsedBlobBody(error: unknown): Promise<unknown> {
+  const response = (error as { response?: { data?: unknown } } | null)?.response;
+  if (response && response.data instanceof Blob) {
+    try {
+      response.data = JSON.parse(await response.data.text());
+    } catch {
+      // Not JSON: normalizeApiError falls back to its generic message.
+    }
+  }
+  return error;
+}

@@ -5,7 +5,6 @@ import type { ApiSuccessEnvelope } from "@/types/api";
 import type {
   VulnerabilityListFilters,
   VulnerabilityListResponse,
-  VulnerabilityResponse,
 } from "@/features/vulnerabilities/types/vulnerability";
 
 /**
@@ -22,13 +21,6 @@ export const vulnerabilitiesApi = {
       apiClient.get<ApiSuccessEnvelope<VulnerabilityListResponse>>(
         "/vulnerabilities",
         { params }
-      )
-    ),
-
-  getVulnerability: (vulnerabilityId: string) =>
-    requestData(
-      apiClient.get<ApiSuccessEnvelope<VulnerabilityResponse>>(
-        `/vulnerabilities/${vulnerabilityId}`
       )
     ),
 };

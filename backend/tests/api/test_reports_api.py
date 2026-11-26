@@ -29,6 +29,7 @@ from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.services.report_service import ReportService
 from app.services.risk_service import RiskService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture(autouse=True)
@@ -55,10 +56,19 @@ def override_report_service(db_session, tmp_path):
 
 @pytest.fixture
 def scan_with_risk(db_session):
-    target = Target(target="203.0.113.40", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.40",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -78,7 +88,7 @@ def scan_with_risk(db_session):
     )
     host = ParsedHost(ipv4="203.0.113.40", services=[service])
     package = AssessmentPackage(
-        scan_id=scan_job.id, scanner_type="OPENVAS", parsed_hosts=[host]
+        scan_id=scan_job.id, scanner_type="NMAP", parsed_hosts=[host]
     )
     inventory_service.process_assessment_package(package)
 
@@ -118,10 +128,19 @@ def test_generate_report_invalid_uuid(client: TestClient):
 
 
 def test_generate_report_missing_risk_context(client: TestClient, db_session):
-    target = Target(target="203.0.113.41", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="203.0.113.41",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.PENDING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.PENDING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 

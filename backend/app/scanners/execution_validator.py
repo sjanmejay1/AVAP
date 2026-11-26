@@ -1,8 +1,14 @@
 import logging
 
+from app.core.config import get_settings
 from app.core.enums import ScannerType, ScanProfile
 from app.core.exceptions import ValidationException
-from app.core.security import is_valid_hostname, is_valid_ipv4, is_valid_ipv4_cidr
+from app.core.security import (
+    cidr_exceeds_scope,
+    is_valid_hostname,
+    is_valid_ipv4,
+    is_valid_ipv4_cidr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +23,6 @@ class ExecutionValidator:
         # Define supported target types per scanner type
         self._supported_targets = {
             ScannerType.NMAP: {"ipv4", "cidr", "hostname"},
-            ScannerType.OPENVAS: {
-                "ipv4",
-                "hostname",
-            },  # CIDR usually requires task splitting or distinct handling
         }
 
     def validate_request(
@@ -60,6 +62,15 @@ class ExecutionValidator:
             raise ValidationException(
                 f"Scanner {scanner_type.value} does not support target "
                 f"type '{target_type}' ('{target}')."
+            )
+
+        # Targets stored before the CIDR scope limit existed are re-checked
+        # here so they cannot bypass it at execution time.
+        min_prefix = get_settings().min_cidr_prefix_length
+        if target_type == "cidr" and cidr_exceeds_scope(target, min_prefix):
+            raise ValidationException(
+                f"CIDR range '{target}' is too broad; the narrowest allowed "
+                f"prefix is /{min_prefix}."
             )
 
         # Additional defense-in-depth sanitization check

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { dashboardKeys } from "@/features/dashboard/hooks/query-keys";
+import { scanKeys } from "@/features/scans/hooks/query-keys";
 import { targetsApi } from "@/features/targets/api/targets-api";
 import { targetKeys } from "@/features/targets/hooks/query-keys";
 import type {
@@ -29,8 +29,7 @@ export function useTarget(targetId: string) {
 /**
  * No `retry` option: creation is not idempotent (a transport failure after
  * the backend already persisted the target would create a duplicate on
- * replay), and the API contract offers no idempotency key. Relies on
- * TanStack Query's default mutation behavior of zero automatic retries.
+ * replay), and the API contract offers no idempotency key.
  */
 export function useCreateTarget() {
   const queryClient = useQueryClient();
@@ -38,12 +37,12 @@ export function useCreateTarget() {
     mutationFn: (body: CreateTargetRequest) => targetsApi.createTarget(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: targetKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
     },
   });
 }
 
-/** No `retry`: delete is not safely replayable without idempotency support. */
+/** No `retry`: delete is not safely replayable. Deleting a target also
+ * deletes its scans, so scan lists are re-read too. */
 export function useDeleteTarget() {
   const queryClient = useQueryClient();
   return useMutation<void, ApiError, string>({
@@ -51,7 +50,7 @@ export function useDeleteTarget() {
     onSuccess: (_data, targetId) => {
       queryClient.invalidateQueries({ queryKey: targetKeys.lists() });
       queryClient.removeQueries({ queryKey: targetKeys.detail(targetId) });
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.summary() });
+      queryClient.invalidateQueries({ queryKey: scanKeys.lists() });
     },
   });
 }

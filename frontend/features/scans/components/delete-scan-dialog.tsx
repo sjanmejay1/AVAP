@@ -12,9 +12,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
+import { scanProfileLabel } from "@/features/scans/constants/scan-profiles";
 import { useDeleteScan } from "@/features/scans/hooks/use-scans";
 import type { ScanResponse } from "@/features/scans/types/scan";
-import { formatLabel } from "@/utils/format";
+import { formatDateTime } from "@/utils/format";
 
 export function DeleteScanDialog({
   scan,
@@ -40,12 +42,8 @@ export function DeleteScanDialog({
         onOpenChange(false);
         onDeleted?.();
       },
-      onError: (error) => {
-        // Preserves the backend's RUNNING-scan protection rule exactly —
-        // a race (scan started running after the menu disabled state was
-        // rendered) still surfaces the real 409 rather than being masked.
-        toast.error(error.message);
-      },
+      // The backend refuses to delete a running scan (409); its message is shown as-is.
+      onError: (error) => toast.error(error.message),
     });
   }
 
@@ -58,15 +56,15 @@ export function DeleteScanDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete scan?</AlertDialogTitle>
+          <AlertDialogTitle>Delete this scan?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently removes the scan job and its associated
-            findings. This cannot be undone.
+            Its hosts, findings, AI advice, raw output and reports are deleted too. It
+            can&apos;t be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <p className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground">
-          {formatLabel(scan.scan_type)} scan
+        <p className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+          {scanProfileLabel(scan.scan_type)} scan requested {formatDateTime(scan.created_at)}
         </p>
 
         <AlertDialogFooter>
@@ -74,9 +72,9 @@ export function DeleteScanDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isPending}
-            className="bg-destructive/10 text-destructive hover:bg-destructive/20"
+            className={buttonVariants({ variant: "destructive" })}
           >
-            {isPending ? "Deleting…" : "Delete Scan"}
+            {isPending ? "Deleting…" : "Delete scan"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

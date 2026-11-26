@@ -10,21 +10,27 @@ from app.models.scan_job import ScanJob
 from app.models.service import NetworkService
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def scan_with_finding(db_session):
-    target = Target(target="10.20.30.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.20.30.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
     scan_job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full"
     )
     db_session.add(scan_job)
     db_session.flush()
 
-    asset = Asset(ipv4="10.20.30.1")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.20.30.1")
     db_session.add(asset)
     db_session.flush()
 
@@ -55,20 +61,14 @@ def scan_with_finding(db_session):
 # --- Empty database ---
 
 
-def test_list_risk_assessments_empty(client: TestClient):
-    response = client.get("/api/v1/risk")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["data"]["total"] == 0
-
-
-def test_summary_not_found_when_empty(client: TestClient):
-    response = client.get("/api/v1/risk/summary")
+def test_list_risk_assessments_for_unknown_scan_returns_404(client: TestClient):
+    response = client.get(f"/api/v1/risk?scan_id={uuid.uuid4()}")
     assert response.status_code == 404
-    assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
-# --- Calculation trigger ---
+def test_list_risk_assessments_requires_scan_id(client: TestClient):
+    response = client.get("/api/v1/risk")
+    assert response.status_code == 422
 
 
 def test_calculate_risk_for_missing_scan_returns_404(client: TestClient):
@@ -151,18 +151,19 @@ def test_list_risk_assessments_after_calculation(client: TestClient, scan_with_f
     scan_id = scan_with_finding["scan_job"].id
     client.post(f"/api/v1/risk/scans/{scan_id}/calculate")
 
-    response = client.get("/api/v1/risk")
+    response = client.get(f"/api/v1/risk?scan_id={scan_id}")
     assert response.status_code == 200
     data = response.json()["data"]
     # VULNERABILITY + ASSET + SCAN + ASSESSMENT = 4 rows for one finding.
-    assert data["total"] == 4
+    # VULNERABILITY + ASSET + SCAN; the global ASSESSMENT row has no scan.
+    assert data["total"] == 3
 
 
 def test_list_risk_assessments_scope_filter(client: TestClient, scan_with_finding):
     scan_id = scan_with_finding["scan_job"].id
     client.post(f"/api/v1/risk/scans/{scan_id}/calculate")
 
-    response = client.get("/api/v1/risk?scope=SCAN")
+    response = client.get(f"/api/v1/risk?scan_id={scan_id}&scope=SCAN")
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["total"] == 1
@@ -173,22 +174,12 @@ def test_list_risk_assessments_pagination(client: TestClient, scan_with_finding)
     scan_id = scan_with_finding["scan_job"].id
     client.post(f"/api/v1/risk/scans/{scan_id}/calculate")
 
-    response = client.get("/api/v1/risk?skip=0&limit=1")
+    response = client.get(f"/api/v1/risk?scan_id={scan_id}&skip=0&limit=1")
     assert response.status_code == 200
     data = response.json()["data"]
     assert len(data["risk_assessments"]) == 1
-    assert data["total"] == 4
+    # VULNERABILITY + ASSET + SCAN; the global ASSESSMENT row has no scan.
+    assert data["total"] == 3
 
 
 # --- Summary ---
-
-
-def test_summary_after_calculation(client: TestClient, scan_with_finding):
-    scan_id = scan_with_finding["scan_job"].id
-    client.post(f"/api/v1/risk/scans/{scan_id}/calculate")
-
-    response = client.get("/api/v1/risk/summary")
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["scope"] == "ASSESSMENT"
-    assert data["risk_score"] == 7.2

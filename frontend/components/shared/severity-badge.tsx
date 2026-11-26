@@ -2,8 +2,8 @@ import { SEVERITY_META, type SeverityKey } from "@/constants/severity";
 import { cn } from "@/lib/utils";
 
 /**
- * Renders a vulnerability's intrinsic severity_rating. Color is always
- * paired with a text label — never a color-only indicator.
+ * Renders a severity or risk level. Color is always paired with a text
+ * label, never a color-only indicator.
  */
 export function SeverityBadge({
   severity,
@@ -17,7 +17,7 @@ export function SeverityBadge({
   return (
     <span
       className={cn(
-        "inline-flex h-[26px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium",
+        "inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs font-medium whitespace-nowrap",
         meta.bgClass,
         meta.textClass,
         meta.borderClass,

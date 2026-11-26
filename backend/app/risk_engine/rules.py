@@ -15,9 +15,8 @@ SCORE_MIN = 0.0
 SCORE_MAX = 10.0
 
 # Fallback base score per severity rating, used only when a vulnerability has
-# no CVSS score (severity_score == 0.0). Mirrors the CVSS band midpoints used
-# by app.parsers.openvas_parser.OpenVASParser._map_cvss_to_severity_rating so
-# that severity language stays consistent across the platform.
+# no CVSS score (severity_score == 0.0). Values are the midpoints of the
+# CVSS v3 severity bands so severity language stays consistent.
 SEVERITY_BASE_SCORES: dict[str, float] = {
     "None": 0.0,
     "Low": 2.5,
@@ -27,8 +26,8 @@ SEVERITY_BASE_SCORES: dict[str, float] = {
 }
 
 # Risk-level thresholds, expressed as the minimum score (inclusive) for each
-# level. Ordered from highest to lowest for evaluation. These bounds mirror
-# the CVSS band thresholds used by the OpenVAS parser for consistency.
+# level. Ordered from highest to lowest for evaluation. These bounds are the
+# CVSS v3 severity band thresholds.
 RISK_LEVEL_THRESHOLDS: tuple[tuple[float, RiskLevel], ...] = (
     (9.0, RiskLevel.CRITICAL),
     (7.0, RiskLevel.HIGH),

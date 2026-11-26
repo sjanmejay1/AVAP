@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -9,6 +10,14 @@ from app.api.responses.api_response import ErrorDetails, ErrorResponse
 from app.core.exceptions import AppException
 
 logger = logging.getLogger(__name__)
+
+
+def _redacted_errors(exc: RequestValidationError) -> list[dict[str, Any]]:
+    """Validation errors without the submitted values."""
+    return [
+        {key: value for key, value in error.items() if key not in ("input", "ctx")}
+        for error in exc.errors()
+    ]
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
@@ -46,14 +55,20 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        """Handle FastAPI validation exceptions (e.g., bad Pydantic payloads)."""
+        """Handle FastAPI validation exceptions (e.g., bad Pydantic payloads).
+
+        The offending `input` value is dropped from both the log and the
+        response: it can be a password or an API key. `ctx` is dropped too
+        because it may hold exception objects that are not JSON-safe.
+        """
+        errors = _redacted_errors(exc)
         logger.info(
             "Request Validation Error",
             extra={
                 "context": {
                     "url": str(request.url),
                     "method": request.method,
-                    "errors": exc.errors(),
+                    "errors": errors,
                 }
             },
         )
@@ -62,7 +77,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
             error=ErrorDetails(
                 code="VALIDATION_ERROR",
                 message="Request validation failed",
-                details={"errors": exc.errors()},
+                details={"errors": errors},
             )
         )
         return JSONResponse(

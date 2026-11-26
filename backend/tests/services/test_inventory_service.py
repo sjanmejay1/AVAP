@@ -25,11 +25,12 @@ from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
 def target(db_session):
-    t = Target(target="192.168.1.1", target_type=TargetType.IPV4)
+    t = Target(user_id=TEST_USER_ID, target="192.168.1.1", target_type=TargetType.IPV4)
     db_session.add(t)
     db_session.flush()
     return t
@@ -38,6 +39,7 @@ def target(db_session):
 @pytest.fixture
 def scan_job(db_session, target):
     job = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target.id,
         status=ScanStatus.RUNNING,
         scan_type="full",
@@ -100,7 +102,12 @@ def test_new_asset_created(db_session, inventory_service, scan_job):
 
 def test_existing_asset_reused(db_session, inventory_service, scan_job, target):
     # Pre-create asset
-    existing = Asset(ipv4="10.0.0.2", hostname="old-host", operating_system="FreeBSD")
+    existing = Asset(
+        user_id=TEST_USER_ID,
+        ipv4="10.0.0.2",
+        hostname="old-host",
+        operating_system="FreeBSD",
+    )
     db_session.add(existing)
     db_session.flush()
 
@@ -131,7 +138,12 @@ def test_existing_asset_reused(db_session, inventory_service, scan_job, target):
 def test_asset_metadata_not_overwritten_with_empty(
     db_session, inventory_service, scan_job
 ):
-    existing = Asset(ipv4="10.0.0.3", hostname="good-host", operating_system="Debian")
+    existing = Asset(
+        user_id=TEST_USER_ID,
+        ipv4="10.0.0.3",
+        hostname="good-host",
+        operating_system="Debian",
+    )
     db_session.add(existing)
     db_session.flush()
 
@@ -178,7 +190,7 @@ def test_service_created(db_session, inventory_service, scan_job):
 
 def test_service_reused_and_updated(db_session, inventory_service, scan_job, target):
     # Pre-create asset + service
-    asset = Asset(ipv4="10.0.1.2")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.0.1.2")
     db_session.add(asset)
     db_session.flush()
     svc = NetworkService(
@@ -381,7 +393,7 @@ def test_scan_finding_created_for_host_with_no_services(
         .one()
     )
     assets, total = inventory_service.asset_repository.get_all(
-        target_id=scan_job.target_id
+        TEST_USER_ID, target_id=scan_job.target_id
     )
     assert total == 1
     assert asset.id in {a.id for a in assets}

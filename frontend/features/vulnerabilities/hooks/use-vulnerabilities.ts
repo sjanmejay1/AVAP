@@ -6,12 +6,12 @@ import type { VulnerabilityListFilters } from "@/features/vulnerabilities/types/
 
 /**
  * The Vulnerability catalog is a read-only reference/inventory resource —
- * no mutation hooks exist here (no endpoint to call), and no polling is
- * applied for the same reason as Assets (catalog data, not an actively
- * observed lifecycle).
+ * no mutation hooks exist here (no endpoint to call), and no polling: the
+ * scan page re-reads this list once, when a scan finishes.
  */
 export function useVulnerabilities(
-  params: { skip?: number; limit?: number } & VulnerabilityListFilters = {}
+  params: { skip?: number; limit?: number } & VulnerabilityListFilters = {},
+  enabled = true
 ) {
   const query = {
     skip: params.skip ?? 0,
@@ -24,13 +24,6 @@ export function useVulnerabilities(
   return useQuery({
     queryKey: vulnerabilityKeys.list(query),
     queryFn: () => vulnerabilitiesApi.getVulnerabilities(query),
-  });
-}
-
-export function useVulnerability(vulnerabilityId: string) {
-  return useQuery({
-    queryKey: vulnerabilityKeys.detail(vulnerabilityId),
-    queryFn: () => vulnerabilitiesApi.getVulnerability(vulnerabilityId),
-    enabled: Boolean(vulnerabilityId),
+    enabled,
   });
 }

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.context import AuditContext
+from app.core.constants import SOURCE_NMAP_NSE
 from app.core.enums import (
     AuditEventCategory,
     AuditEventType,
@@ -25,8 +26,10 @@ from app.parsers.models import (
     ParsedVulnerability,
 )
 from app.repositories.asset_repository import AssetRepository
+from app.repositories.scan_host_repository import ScanHostRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
+from app.schemas.scan_host import ScanHostDetails
 from app.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
@@ -42,35 +45,42 @@ class InventoryService:
         vulnerability_repository: VulnerabilityRepository,
         scan_repository: ScanRepository,
         audit_service: AuditService,
+        scan_host_repository: ScanHostRepository | None = None,
     ):
         self.session = session
         self.asset_repository = asset_repository
         self.vulnerability_repository = vulnerability_repository
         self.scan_repository = scan_repository
         self.audit_service = audit_service
+        self.scan_host_repository = scan_host_repository or ScanHostRepository(
+            session
+        )
 
-    def _upsert_asset(self, host: ParsedHost) -> Asset:
-        """Upsert an asset based on IPv4 address."""
-        existing_asset = self.asset_repository.get_by_ip(host.ipv4)
+    def _upsert_asset(self, host: ParsedHost, user_id: uuid.UUID) -> Asset:
+        """Upsert one of the scan owner's assets based on IPv4 address."""
+        existing_asset = self.asset_repository.get_by_ip(host.ipv4, user_id)
+
+        # Truncate string fields to DB limits (Asset: hostname 253, OS 253)
+        hostname_val = host.hostname.strip()[:253] if host.hostname else None
+        os_val = host.operating_system.strip()[:253] if host.operating_system else None
 
         if existing_asset:
             # Update hostname if meaningful data is provided
-            if host.hostname and host.hostname.strip():
-                existing_asset.hostname = host.hostname.strip()
+            if hostname_val:
+                existing_asset.hostname = hostname_val
 
             # Update OS if meaningful data is provided
-            if host.operating_system and host.operating_system.strip():
-                existing_asset.operating_system = host.operating_system.strip()
+            if os_val:
+                existing_asset.operating_system = os_val
 
             self.session.flush()
             return existing_asset
         else:
             new_asset = Asset(
                 ipv4=host.ipv4,
-                hostname=host.hostname.strip() if host.hostname else None,
-                operating_system=host.operating_system.strip()
-                if host.operating_system
-                else None,
+                user_id=user_id,
+                hostname=hostname_val,
+                operating_system=os_val,
             )
             self.asset_repository.create(new_asset)
             return new_asset
@@ -87,16 +97,37 @@ class InventoryService:
         )
         existing_service = self.session.execute(stmt).scalar_one_or_none()
 
+        svc_name = (
+            parsed_service.service_name[:50]
+            if parsed_service.service_name and parsed_service.service_name != "unknown"
+            else "unknown"
+        )
+        prod_val = (
+            parsed_service.product.strip()[:100]
+            if parsed_service.product and parsed_service.product.strip()
+            else None
+        )
+        ver_val = (
+            parsed_service.version.strip()[:50]
+            if parsed_service.version and parsed_service.version.strip()
+            else None
+        )
+        extra_val = (
+            parsed_service.extra_info.strip()[:4000]
+            if parsed_service.extra_info and parsed_service.extra_info.strip()
+            else None
+        )
+
         if existing_service:
             # Update service info if meaningful data is provided
-            if parsed_service.service_name and parsed_service.service_name != "unknown":
-                existing_service.service_name = parsed_service.service_name
-            if parsed_service.product and parsed_service.product.strip():
-                existing_service.product = parsed_service.product.strip()
-            if parsed_service.version and parsed_service.version.strip():
-                existing_service.version = parsed_service.version.strip()
-            if parsed_service.extra_info and parsed_service.extra_info.strip():
-                existing_service.extra_info = parsed_service.extra_info.strip()
+            if svc_name != "unknown":
+                existing_service.service_name = svc_name
+            if prod_val:
+                existing_service.product = prod_val
+            if ver_val:
+                existing_service.version = ver_val
+            if extra_val:
+                existing_service.extra_info = extra_val
 
             self.session.flush()
             return existing_service
@@ -104,17 +135,11 @@ class InventoryService:
             new_service = NetworkService(
                 asset_id=asset_id,
                 port=parsed_service.port,
-                protocol=parsed_service.protocol,
-                service_name=parsed_service.service_name,
-                product=parsed_service.product.strip()
-                if parsed_service.product
-                else None,
-                version=parsed_service.version.strip()
-                if parsed_service.version
-                else None,
-                extra_info=parsed_service.extra_info.strip()
-                if parsed_service.extra_info
-                else None,
+                protocol=parsed_service.protocol[:10],
+                service_name=svc_name,
+                product=prod_val,
+                version=ver_val,
+                extra_info=extra_val,
             )
             self.session.add(new_service)
             self.session.flush()
@@ -219,7 +244,12 @@ class InventoryService:
             # Process hosts sequentially
             for host in package.parsed_hosts:
                 # 2. Upsert Asset
-                asset = self._upsert_asset(host)
+                asset = self._upsert_asset(host, scan_job.user_id)
+                self.scan_host_repository.upsert(
+                    package.scan_id,
+                    asset.id,
+                    ScanHostDetails.from_parsed_host(host).model_dump(mode="json"),
+                )
 
                 # A host that is up but has no open services (e.g. all
                 # ports filtered/closed) would otherwise get an Asset row
@@ -237,6 +267,18 @@ class InventoryService:
                         service_id=None,
                     )
 
+                # Host-level script findings have no service.
+                for parsed_vuln in host.host_vulnerabilities:
+                    vuln = self.upsert_vulnerability(
+                        parsed_vuln, source=SOURCE_NMAP_NSE
+                    )
+                    self.link_finding(
+                        scan_id=package.scan_id,
+                        asset_id=asset.id,
+                        vulnerability_id=vuln.id,
+                        service_id=None,
+                    )
+
                 # Process services for this host
                 for parsed_service in host.services:
                     # 3. Upsert NetworkService
@@ -246,7 +288,9 @@ class InventoryService:
                     if parsed_service.vulnerabilities:
                         for parsed_vuln in parsed_service.vulnerabilities:
                             # 4. Upsert Vulnerability
-                            vuln = self.upsert_vulnerability(parsed_vuln)
+                            vuln = self.upsert_vulnerability(
+                                parsed_vuln, source=SOURCE_NMAP_NSE
+                            )
 
                             # 5. Create ScanFinding linking scan, asset, vuln, service
                             self.link_finding(

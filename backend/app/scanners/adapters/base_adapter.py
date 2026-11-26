@@ -8,7 +8,7 @@ from app.scanners.scan_artifact import ScanArtifact
 class BaseScannerAdapter(ABC):
     """Abstract Base Class defining the contract for all scanner adapters.
 
-    Each supported security scanner (e.g., Nmap, OpenVAS) must implement
+    Each supported security scanner (e.g., Nmap) must implement
     this interface.
     """
 

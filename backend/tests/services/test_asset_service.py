@@ -10,6 +10,7 @@ from app.models.scan_job import ScanJob
 from app.models.target import Target
 from app.repositories.asset_repository import AssetRepository
 from app.services.asset_service import AssetService
+from tests.auth_helpers import TEST_USER_ID
 
 
 @pytest.fixture
@@ -19,14 +20,14 @@ def service(db_session):
 
 @pytest.fixture
 def asset(db_session):
-    a = Asset(ipv4="192.168.50.1", hostname="svc-test.local")
+    a = Asset(user_id=TEST_USER_ID, ipv4="192.168.50.1", hostname="svc-test.local")
     db_session.add(a)
     db_session.commit()
     return a
 
 
 def test_get_all_assets(service, asset):
-    items, total = service.get_all_assets()
+    items, total = service.get_all_assets(TEST_USER_ID)
     assert total == 1
     assert items[0].id == asset.id
 
@@ -35,22 +36,32 @@ def test_get_all_assets_filters_by_target_id(service, db_session):
     """Asset has no direct target_id — reached only via Target <- ScanJob <-
     ScanFinding. An asset discovered by a different target's scan must be
     excluded."""
-    target_a = Target(target="10.0.0.1", target_type=TargetType.IPV4)
-    target_b = Target(target="10.0.0.2", target_type=TargetType.IPV4)
+    target_a = Target(
+        user_id=TEST_USER_ID,
+        target="10.0.0.1",
+        target_type=TargetType.IPV4,
+    )
+    target_b = Target(
+        user_id=TEST_USER_ID,
+        target="10.0.0.2",
+        target_type=TargetType.IPV4,
+    )
     db_session.add_all([target_a, target_b])
     db_session.flush()
 
     scan_a = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target_a.id, scan_type="full", status=ScanStatus.COMPLETED
     )
     scan_b = ScanJob(
+        user_id=TEST_USER_ID,
         target_id=target_b.id, scan_type="full", status=ScanStatus.COMPLETED
     )
     db_session.add_all([scan_a, scan_b])
     db_session.flush()
 
-    asset_a = Asset(ipv4="10.0.0.1")
-    asset_b = Asset(ipv4="10.0.0.2")
+    asset_a = Asset(user_id=TEST_USER_ID, ipv4="10.0.0.1")
+    asset_b = Asset(user_id=TEST_USER_ID, ipv4="10.0.0.2")
     db_session.add_all([asset_a, asset_b])
     db_session.flush()
 
@@ -62,7 +73,7 @@ def test_get_all_assets_filters_by_target_id(service, db_session):
     )
     db_session.commit()
 
-    items, total = service.get_all_assets(target_id=target_a.id)
+    items, total = service.get_all_assets(TEST_USER_ID, target_id=target_a.id)
     assert total == 1
     assert items[0].id == asset_a.id
 
@@ -70,17 +81,31 @@ def test_get_all_assets_filters_by_target_id(service, db_session):
 def test_get_all_assets_filters_by_scan_id(service, db_session):
     """Assets discovered by one scan must not leak into another scan's
     scoped list, even against the same target."""
-    target = Target(target="10.0.1.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.0.1.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
 
-    scan_a = ScanJob(target_id=target.id, scan_type="full", status=ScanStatus.COMPLETED)
-    scan_b = ScanJob(target_id=target.id, scan_type="full", status=ScanStatus.COMPLETED)
+    scan_a = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        scan_type="full",
+        status=ScanStatus.COMPLETED,
+    )
+    scan_b = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        scan_type="full",
+        status=ScanStatus.COMPLETED,
+    )
     db_session.add_all([scan_a, scan_b])
     db_session.flush()
 
-    asset_a = Asset(ipv4="10.0.1.10")
-    asset_b = Asset(ipv4="10.0.1.20")
+    asset_a = Asset(user_id=TEST_USER_ID, ipv4="10.0.1.10")
+    asset_b = Asset(user_id=TEST_USER_ID, ipv4="10.0.1.20")
     db_session.add_all([asset_a, asset_b])
     db_session.flush()
 
@@ -92,19 +117,19 @@ def test_get_all_assets_filters_by_scan_id(service, db_session):
     )
     db_session.commit()
 
-    items, total = service.get_all_assets(scan_id=scan_a.id)
+    items, total = service.get_all_assets(TEST_USER_ID, scan_id=scan_a.id)
     assert total == 1
     assert items[0].id == asset_a.id
 
 
 def test_get_asset_not_found(service):
     with pytest.raises(NotFoundException):
-        service.get_asset(uuid.uuid4())
+        service.get_asset(uuid.uuid4(), TEST_USER_ID)
 
 
 def test_delete_asset_commits(service, asset, db_session):
     asset_id = asset.id
-    service.delete_asset(asset_id)
+    service.delete_asset(asset_id, TEST_USER_ID)
 
     # A rollback here must NOT undo the deletion, proving the service (not
     # the caller) already committed the transaction.
@@ -115,4 +140,4 @@ def test_delete_asset_commits(service, asset, db_session):
 
 def test_delete_asset_not_found(service):
     with pytest.raises(NotFoundException):
-        service.delete_asset(uuid.uuid4())
+        service.delete_asset(uuid.uuid4(), TEST_USER_ID)

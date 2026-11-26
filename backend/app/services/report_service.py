@@ -31,6 +31,7 @@ from app.repositories.network_service_repository import NetworkServiceRepository
 from app.repositories.report_repository import ReportRepository
 from app.repositories.risk_repository import RiskRepository
 from app.repositories.scan_finding_repository import ScanFindingRepository
+from app.repositories.scan_host_repository import ScanHostRepository
 from app.repositories.scan_repository import ScanRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.audit_service import AuditService
@@ -80,7 +81,10 @@ class ReportService:
         return root
 
     def generate_report(
-        self, scan_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        scan_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> Report:
         """Generate a new immutable report for a scan's current assessment state.
 
@@ -89,7 +93,7 @@ class ReportService:
         report history.
         """
         context = audit_context or AuditContext.system()
-        scan_job = self.scan_repository.get_by_id(scan_id)
+        scan_job = self.scan_repository.get_owned(scan_id, user_id)
         if not scan_job:
             raise NotFoundException(f"Scan job with ID {scan_id} not found.")
 
@@ -110,6 +114,7 @@ class ReportService:
             network_service_repository=self.network_service_repository,
             scan_finding_repository=self.scan_finding_repository,
             ai_recommendation_repository=self.ai_recommendation_repository,
+            scan_host_repository=ScanHostRepository(self.session),
         )
 
         logger.info(
@@ -229,21 +234,30 @@ class ReportService:
                     "Rendered output is not a valid PDF document."
                 )
 
-    def get_report(self, report_id: uuid.UUID) -> Report:
+    def get_report(self, report_id: uuid.UUID, user_id: uuid.UUID) -> Report:
         """Retrieve report metadata by ID."""
-        report = self.report_repository.get_by_id(report_id)
+        report = self.report_repository.get_owned(report_id, user_id)
         if not report:
             raise NotFoundException(f"Report {report_id} not found.")
         return report
 
     def get_reports(
-        self, skip: int = 0, limit: int = 50, scan_id: uuid.UUID | None = None
+        self,
+        user_id: uuid.UUID,
+        skip: int = 0,
+        limit: int = 50,
+        scan_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Report], int]:
         """Retrieve a paginated, optionally scan-filtered list of report metadata."""
-        return self.report_repository.get_all(skip=skip, limit=limit, scan_id=scan_id)
+        return self.report_repository.get_all(
+            user_id=user_id, skip=skip, limit=limit, scan_id=scan_id
+        )
 
     def get_report_file_path(
-        self, report_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        report_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> Path:
         """Resolve the physical file path for a report, verifying it remains
         inside the configured storage root and actually exists on disk.
@@ -252,7 +266,7 @@ class ReportService:
         the audit event is recorded here (never the file path or contents,
         only the report/scan identifiers).
         """
-        report = self.get_report(report_id)
+        report = self.get_report(report_id, user_id)
         root = self._storage_root().resolve()
         candidate = (root / report.file_name).resolve()
 
@@ -290,10 +304,13 @@ class ReportService:
         return candidate
 
     def delete_report(
-        self, report_id: uuid.UUID, audit_context: AuditContext | None = None
+        self,
+        user_id: uuid.UUID,
+        report_id: uuid.UUID,
+        audit_context: AuditContext | None = None,
     ) -> None:
         """Delete report metadata and its associated file."""
-        report = self.get_report(report_id)
+        report = self.get_report(report_id, user_id)
         root = self._storage_root().resolve()
         file_path = (root / report.file_name).resolve()
         report_format = report.format

@@ -1,6 +1,5 @@
 import logging
 import uuid
-from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -8,13 +7,11 @@ from sqlalchemy.orm import Session
 from app.audit.context import AuditContext
 from app.audit.metadata_policy import validate_metadata
 from app.core.enums import (
-    AuditActorType,
     AuditEventCategory,
     AuditEventType,
     AuditOutcome,
     AuditResourceType,
 )
-from app.core.exceptions import NotFoundException
 from app.models.audit_event import AuditEvent
 from app.repositories.audit_repository import AuditRepository
 
@@ -28,7 +25,7 @@ class AuditService:
     `AuditEvent` onto the caller's existing session so the calling service
     controls whether it lands in the same transaction as the business
     action it documents (SUCCESS) or in a fresh transaction after a
-    business rollback (FAILURE). See modules_docs/10_audit_logging.md for
+    business rollback (FAILURE). See docs/modules/10_audit_logging.md for
     the exact transaction semantics guarantee.
 
     AuditService never audits its own operations (no recursive auditing),
@@ -115,37 +112,3 @@ class AuditService:
                 extra={"event_type": event_type.value},
                 exc_info=True,
             )
-
-    def get_event(self, event_id: uuid.UUID) -> AuditEvent:
-        event = self.audit_repository.get_by_id(event_id)
-        if not event:
-            raise NotFoundException(f"Audit event {event_id} not found.")
-        return event
-
-    def list_events(
-        self,
-        skip: int = 0,
-        limit: int = 50,
-        event_type: AuditEventType | None = None,
-        category: AuditEventCategory | None = None,
-        outcome: AuditOutcome | None = None,
-        resource_type: AuditResourceType | None = None,
-        resource_id: uuid.UUID | None = None,
-        scan_id: uuid.UUID | None = None,
-        actor_type: AuditActorType | None = None,
-        occurred_after: datetime | None = None,
-        occurred_before: datetime | None = None,
-    ) -> tuple[Sequence[AuditEvent], int]:
-        return self.audit_repository.list(
-            skip=skip,
-            limit=limit,
-            event_type=event_type,
-            category=category,
-            outcome=outcome,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            scan_id=scan_id,
-            actor_type=actor_type,
-            occurred_after=occurred_after,
-            occurred_before=occurred_before,
-        )

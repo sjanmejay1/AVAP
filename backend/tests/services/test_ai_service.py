@@ -27,6 +27,7 @@ from app.repositories.risk_repository import RiskRepository
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.services.ai_service import AIService
 from app.services.audit_service import AuditService
+from tests.auth_helpers import TEST_USER_ID
 
 VALID_OUTPUT = {
     "summary": "Outdated OpenSSH exposes known vulnerabilities.",
@@ -76,7 +77,7 @@ def vulnerability(db_session):
 
 @pytest.fixture
 def target(db_session):
-    t = Target(target="10.40.0.1", target_type=TargetType.IPV4)
+    t = Target(user_id=TEST_USER_ID, target="10.40.0.1", target_type=TargetType.IPV4)
     db_session.add(t)
     db_session.flush()
     return t
@@ -84,7 +85,12 @@ def target(db_session):
 
 @pytest.fixture
 def scan_job(db_session, target):
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -92,7 +98,7 @@ def scan_job(db_session, target):
 
 @pytest.fixture
 def asset(db_session):
-    a = Asset(ipv4="10.40.0.1")
+    a = Asset(user_id=TEST_USER_ID, ipv4="10.40.0.1")
     db_session.add(a)
     db_session.flush()
     return a
@@ -142,7 +148,7 @@ def _service(db_session, ai_manager=None):
 def test_generate_missing_risk_assessment_raises(db_session):
     service = _service(db_session)
     with pytest.raises(NotFoundException):
-        service.generate_recommendation(uuid.uuid4())
+        service.generate_recommendation(TEST_USER_ID, uuid.uuid4())
 
 
 def test_generate_insufficient_context_for_non_vulnerability_scope(
@@ -153,13 +159,13 @@ def test_generate_insufficient_context_for_non_vulnerability_scope(
     )
     service = _service(db_session)
     with pytest.raises(InsufficientContextException):
-        service.generate_recommendation(ra.id)
+        service.generate_recommendation(TEST_USER_ID, ra.id)
 
 
 def test_get_recommendation_not_found_raises(db_session):
     service = _service(db_session)
     with pytest.raises(NotFoundException):
-        service.get_recommendation(uuid.uuid4())
+        service.get_recommendation(TEST_USER_ID, uuid.uuid4())
 
 
 # --- Successful generation and persistence ---
@@ -172,7 +178,7 @@ def test_generate_recommendation_persists_valid_output(
     manager = FakeAIManager()
     service = _service(db_session, ai_manager=manager)
 
-    record = service.generate_recommendation(ra.id)
+    record = service.generate_recommendation(TEST_USER_ID, ra.id)
 
     assert record.vulnerability_id == vulnerability.id
     assert record.risk_assessment_id == ra.id
@@ -186,9 +192,9 @@ def test_get_recommendation_returns_persisted_record(
 ):
     ra = _make_risk_assessment(db_session, scan_job, asset, vulnerability)
     service = _service(db_session)
-    generated = service.generate_recommendation(ra.id)
+    generated = service.generate_recommendation(TEST_USER_ID, ra.id)
 
-    fetched = service.get_recommendation(ra.id)
+    fetched = service.get_recommendation(TEST_USER_ID, ra.id)
     assert fetched.id == generated.id
 
 
@@ -202,8 +208,8 @@ def test_regeneration_with_unchanged_context_returns_existing_without_calling_pr
     manager = FakeAIManager()
     service = _service(db_session, ai_manager=manager)
 
-    first = service.generate_recommendation(ra.id)
-    second = service.generate_recommendation(ra.id)
+    first = service.generate_recommendation(TEST_USER_ID, ra.id)
+    second = service.generate_recommendation(TEST_USER_ID, ra.id)
 
     assert second.id == first.id
     assert len(manager.generate_calls) == 1  # provider was not called again
@@ -218,7 +224,7 @@ def test_regeneration_after_risk_recalculation_calls_provider_again(
     )
     manager = FakeAIManager()
     service = _service(db_session, ai_manager=manager)
-    first = service.generate_recommendation(ra.id)
+    first = service.generate_recommendation(TEST_USER_ID, ra.id)
 
     # Simulate Module 06 recalculating this risk assessment more recently.
     # A explicit forward offset avoids flakiness from coarse OS clock
@@ -226,7 +232,7 @@ def test_regeneration_after_risk_recalculation_calls_provider_again(
     ra.calculated_at = first.generated_at + timedelta(seconds=1)
     db_session.commit()
 
-    second = service.generate_recommendation(ra.id)
+    second = service.generate_recommendation(TEST_USER_ID, ra.id)
 
     assert second.id == first.id  # same identity, updated in place
     assert len(manager.generate_calls) == 2
@@ -238,12 +244,12 @@ def test_different_model_creates_a_new_recommendation_identity(
     ra = _make_risk_assessment(db_session, scan_job, asset, vulnerability)
     first_manager = FakeAIManager(model="model-a")
     first = _service(db_session, ai_manager=first_manager).generate_recommendation(
-        ra.id
+        TEST_USER_ID, ra.id
     )
 
     second_manager = FakeAIManager(model="model-b")
     second = _service(db_session, ai_manager=second_manager).generate_recommendation(
-        ra.id
+        TEST_USER_ID, ra.id
     )
 
     assert second.id != first.id
@@ -260,7 +266,7 @@ def test_generate_provider_failure_propagates_and_persists_nothing(
     service = _service(db_session, ai_manager=manager)
 
     with pytest.raises(AIProviderException):
-        service.generate_recommendation(ra.id)
+        service.generate_recommendation(TEST_USER_ID, ra.id)
 
     remaining = (
         db_session.query(AIRecommendation)
@@ -278,7 +284,7 @@ def test_generate_invalid_ai_output_not_persisted(
     service = _service(db_session, ai_manager=manager)
 
     with pytest.raises(InvalidAIResponseException):
-        service.generate_recommendation(ra.id)
+        service.generate_recommendation(TEST_USER_ID, ra.id)
 
     remaining = (
         db_session.query(AIRecommendation)
@@ -297,7 +303,7 @@ def test_previous_valid_recommendation_preserved_after_regeneration_failure(
     )
     good_manager = FakeAIManager()
     baseline = _service(db_session, ai_manager=good_manager).generate_recommendation(
-        ra.id
+        TEST_USER_ID, ra.id
     )
     assert baseline.summary == VALID_OUTPUT["summary"]
 
@@ -309,7 +315,9 @@ def test_previous_valid_recommendation_preserved_after_regeneration_failure(
 
     failing_manager = FakeAIManager(exc=AIProviderException("provider down"))
     with pytest.raises(AIProviderException):
-        _service(db_session, ai_manager=failing_manager).generate_recommendation(ra.id)
+        _service(db_session, ai_manager=failing_manager).generate_recommendation(
+            TEST_USER_ID, ra.id
+        )
 
     preserved = (
         db_session.query(AIRecommendation)
@@ -334,7 +342,7 @@ def test_transaction_rollback_on_persistence_failure(
         ),
         pytest.raises(RuntimeError),
     ):
-        service.generate_recommendation(ra.id)
+        service.generate_recommendation(TEST_USER_ID, ra.id)
 
     remaining = (
         db_session.query(AIRecommendation)

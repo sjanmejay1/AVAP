@@ -1,20 +1,70 @@
-from contextlib import asynccontextmanager
+import logging
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from app.api.middleware.exception_handler import setup_exception_handlers
 from app.api.middleware.request_context import setup_request_context_middleware
 from app.api.routes.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.database.session import engine
+from app.database.session import SessionLocal, engine
+from app.repositories.audit_repository import AuditRepository
+from app.repositories.scan_repository import ScanRepository
+from app.repositories.target_repository import TargetRepository
+from app.services.audit_service import AuditService
+from app.services.scan_service import ScanService
+
+logger = logging.getLogger(__name__)
+
+SessionScope = Callable[[], AbstractContextManager[Session]]
+
+
+@contextmanager
+def _default_session_scope() -> Iterator[Session]:
+    """Open a standalone DB session for startup work and always close it."""
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def recover_interrupted_scans(session_scope: SessionScope) -> None:
+    """Fail scans orphaned by a previous server process.
+
+    A failure here is logged and swallowed: startup must not be blocked by
+    recovery, and the affected scans stay visible as PENDING/RUNNING.
+    """
+    try:
+        with session_scope() as session:
+            service = ScanService(
+                scan_repository=ScanRepository(session),
+                target_repository=TargetRepository(session),
+                audit_service=AuditService(AuditRepository(session)),
+            )
+            service.recover_interrupted_scans()
+    except Exception:
+        logger.exception(
+            "Startup scan recovery failed; orphaned scans may persist.",
+            extra={"context": {"operation": "recover_interrupted_scans"}},
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle events for the FastAPI application."""
     setup_logging()
+
+    # Tests replace app.state.session_scope with their transactional session
+    # so startup recovery never touches the database configured in .env.
+    session_scope: SessionScope = getattr(
+        app.state, "session_scope", _default_session_scope
+    )
+    recover_interrupted_scans(session_scope)
 
     yield
 
@@ -25,6 +75,10 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Application factory for FastAPI."""
     settings = get_settings()
+    # Refuse to start without strong auth secrets (names only in the error).
+    settings.validate_security_settings()
+    settings.validate_storage_settings()
+    settings.validate_ai_settings()
 
     app = FastAPI(
         title=settings.app_name,
@@ -36,20 +90,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS configuration. The frontend deploys separately from this API (see
-    # frontend/frontend.md), so its origin(s) must be explicitly allowlisted
-    # via CORS_ALLOWED_ORIGINS rather than a wildcard. No authentication/
-    # cookies exist yet (see ai_contract.md — deferred to a future phase),
-    # so credentialed cross-origin requests are not a concern;
-    # allow_credentials=True combined with a wildcard or multi-origin
-    # allowlist is a contradictory/insecure configuration and must not be
-    # reintroduced without re-evaluating this alongside real authentication.
+    # CORS: an explicit origin list (never a wildcard) with credentials,
+    # so the browser sends the httpOnly refresh cookie to /auth/refresh.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins_list,
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
 
     # Register custom exception handlers

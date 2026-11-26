@@ -24,7 +24,8 @@ class AssetRepository:
         return asset
 
     def get_by_id(self, asset_id: uuid.UUID) -> Asset | None:
-        """Retrieve an asset by its ID, eager loading its services."""
+        """Retrieve an asset by its ID regardless of owner (internal use only;
+        user-facing paths use get_owned()), eager loading its services."""
         stmt = (
             select(Asset)
             .where(Asset.id == asset_id)
@@ -32,17 +33,27 @@ class AssetRepository:
         )
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def get_by_ip(self, ipv4: str) -> Asset | None:
-        """Retrieve an asset by its IPv4 address."""
+    def get_owned(self, asset_id: uuid.UUID, user_id: uuid.UUID) -> Asset | None:
+        """Retrieve one of the user's assets by its ID, with its services."""
         stmt = (
             select(Asset)
-            .where(Asset.ipv4 == ipv4)
+            .where(Asset.id == asset_id, Asset.user_id == user_id)
+            .options(selectinload(Asset.services))
+        )
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def get_by_ip(self, ipv4: str, user_id: uuid.UUID) -> Asset | None:
+        """Retrieve one of the user's assets by its IPv4 address."""
+        stmt = (
+            select(Asset)
+            .where(Asset.ipv4 == ipv4, Asset.user_id == user_id)
             .options(selectinload(Asset.services))
         )
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_all(
         self,
+        user_id: uuid.UUID,
         skip: int = 0,
         limit: int = 50,
         ip: str | None = None,
@@ -67,7 +78,7 @@ class AssetRepository:
 
         if needs_subquery:
             # Subquery: select distinct asset IDs matching the join filters
-            id_subq = select(Asset.id.distinct())
+            id_subq = select(Asset.id.distinct()).where(Asset.user_id == user_id)
 
             if port is not None:
                 id_subq = id_subq.join(Asset.services).where(
@@ -117,8 +128,12 @@ class AssetRepository:
             count_stmt = select(func.count()).select_from(id_subquery)
         else:
             # Simple query — no joins needed
-            stmt = select(Asset).options(selectinload(Asset.services))
-            count_stmt = select(func.count(Asset.id))
+            stmt = (
+                select(Asset)
+                .where(Asset.user_id == user_id)
+                .options(selectinload(Asset.services))
+            )
+            count_stmt = select(func.count(Asset.id)).where(Asset.user_id == user_id)
 
             if ip:
                 stmt = stmt.where(Asset.ipv4 == ip)

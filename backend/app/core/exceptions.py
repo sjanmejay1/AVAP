@@ -141,18 +141,6 @@ class UnsupportedProviderException(AppException):
         )
 
 
-class AIProviderConfigurationException(AppException):
-    """Raised when a supported AI provider is missing required configuration."""
-
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
-        super().__init__(
-            message=message,
-            status_code=500,
-            error_code="AI_PROVIDER_CONFIGURATION_ERROR",
-            details=details,
-        )
-
-
 class AIProviderException(AppException):
     """Raised when an AI provider request fails at the transport level
     (network failure, timeout, non-success response, malformed or empty output).
@@ -249,4 +237,46 @@ class UnsafeAuditMetadataException(AppException):
             status_code=500,
             error_code="UNSAFE_AUDIT_METADATA",
             details=details,
+        )
+
+
+class TooManyRequestsException(AppException):
+    """Raised when a request would exceed the global concurrent scan limit."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(
+            message=message,
+            status_code=429,
+            error_code="TOO_MANY_REQUESTS",
+            details=details,
+        )
+
+
+class AuthenticationException(AppException):
+    """Raised when credentials or a token are missing, invalid or expired.
+
+    The message is deliberately generic: it never says whether the email
+    exists or which part of the credential was wrong.
+    """
+
+    def __init__(self, message: str = "Authentication required."):
+        super().__init__(
+            message=message,
+            status_code=401,
+            error_code="UNAUTHORIZED",
+        )
+
+
+class AIKeyRequiredException(AppException):
+    """Raised when an AI action needs a provider key the user hasn't saved."""
+
+    def __init__(self, provider: str):
+        super().__init__(
+            message=(
+                f"AI analysis needs your {provider} API key. "
+                "Add it on the Profile page."
+            ),
+            status_code=409,
+            error_code="AI_KEY_REQUIRED",
+            details={"provider": provider},
         )

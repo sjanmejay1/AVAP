@@ -27,7 +27,7 @@ class AuditEvent(Base, TimestampMixin):
     `resource_id`/`scan_id` are plain UUID columns with no foreign key:
     audit evidence must survive deletion of the resource it documents. On
     PostgreSQL, migration 0007 additionally installs a trigger that rejects
-    UPDATE/DELETE at the database level; see modules_docs/10_audit_logging.md
+    UPDATE/DELETE at the database level; see docs/modules/10_audit_logging.md
     for the exact guarantee level (SQLite test runs do not get this
     database-level enforcement, only the application-level one).
     """

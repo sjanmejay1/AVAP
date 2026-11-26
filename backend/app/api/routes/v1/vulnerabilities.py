@@ -3,8 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
+from app.models.user import User
 from app.repositories.vulnerability_repository import VulnerabilityRepository
 from app.schemas.vulnerability import VulnerabilityListResponse, VulnerabilityResponse
 from app.services.vulnerability_service import VulnerabilityService
@@ -39,9 +41,11 @@ def list_vulnerabilities(
         "(scanner-native and AI-inferred findings)",
     ),
     service: VulnerabilityService = Depends(get_vulnerability_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve a paginated, filtered list of all normalized vulnerabilities."""
     items, total = service.get_all_vulnerabilities(
+        current_user.id,
         skip=skip,
         limit=limit,
         severity_rating=severity_rating,
@@ -68,7 +72,8 @@ def list_vulnerabilities(
 def get_vulnerability(
     vuln_id: uuid.UUID,
     service: VulnerabilityService = Depends(get_vulnerability_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve details of a specific vulnerability by its UUID."""
-    vulnerability = service.get_vulnerability(vuln_id)
+    vulnerability = service.get_vulnerability(vuln_id, current_user.id)
     return {"data": VulnerabilityResponse.model_validate(vulnerability)}

@@ -53,6 +53,7 @@ from app.services.report_service import ReportService
 from app.services.risk_service import RiskService
 from app.services.scan_service import ScanService
 from app.services.target_service import TargetService
+from tests.auth_helpers import TEST_USER_ID
 
 
 def _audit(db_session) -> AuditService:
@@ -75,7 +76,9 @@ def test_target_created_success_event_persisted(db_session):
     audit_service = _audit(db_session)
     service = TargetService(TargetRepository(db_session), audit_service)
 
-    target = service.create_target(CreateTargetRequest(target="198.51.100.1"))
+    target = service.create_target(
+        TEST_USER_ID, CreateTargetRequest(target="198.51.100.1")
+    )
 
     events = _events(db_session, AuditEventType.TARGET_CREATED)
     assert len(events) == 1
@@ -97,18 +100,22 @@ def test_target_created_audit_failure_rolls_back_target_creation(db_session):
         ),
         pytest.raises(RuntimeError),
     ):
-        service.create_target(CreateTargetRequest(target="198.51.100.2"))
+        service.create_target(TEST_USER_ID, CreateTargetRequest(target="198.51.100.2"))
 
-    assert TargetRepository(db_session).get_by_value("198.51.100.2") is None
+    assert (
+        TargetRepository(db_session).get_by_value("198.51.100.2", TEST_USER_ID) is None
+    )
     assert _events(db_session, AuditEventType.TARGET_CREATED) == []
 
 
 def test_target_deleted_success_event_persisted(db_session):
     audit_service = _audit(db_session)
     service = TargetService(TargetRepository(db_session), audit_service)
-    target = service.create_target(CreateTargetRequest(target="198.51.100.3"))
+    target = service.create_target(
+        TEST_USER_ID, CreateTargetRequest(target="198.51.100.3")
+    )
 
-    service.delete_target(target.id)
+    service.delete_target(TEST_USER_ID, target.id)
 
     events = _events(db_session, AuditEventType.TARGET_DELETED)
     assert len(events) == 1
@@ -129,7 +136,11 @@ def _scan_service(db_session, audit_service) -> ScanService:
 
 @pytest.fixture
 def audit_target(db_session):
-    target = Target(target="198.51.100.10", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="198.51.100.10",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.commit()
     return target
@@ -140,7 +151,7 @@ def test_scan_created_success_event_persisted(db_session, audit_target):
     service = _scan_service(db_session, audit_service)
 
     scan_job = service.create_scan(
-        CreateScanRequest(target_id=audit_target.id, scan_profile="full")
+        TEST_USER_ID, CreateScanRequest(target_id=audit_target.id, scan_profile="full")
     )
 
     events = _events(db_session, AuditEventType.SCAN_CREATED)
@@ -164,7 +175,8 @@ def test_scan_created_audit_failure_rolls_back_scan_creation(db_session, audit_t
         pytest.raises(RuntimeError),
     ):
         service.create_scan(
-            CreateScanRequest(target_id=audit_target.id, scan_profile="full")
+            TEST_USER_ID,
+            CreateScanRequest(target_id=audit_target.id, scan_profile="full"),
         )
 
     remaining = (
@@ -178,10 +190,10 @@ def test_scan_deleted_success_event_persisted(db_session, audit_target):
     audit_service = _audit(db_session)
     service = _scan_service(db_session, audit_service)
     scan_job = service.create_scan(
-        CreateScanRequest(target_id=audit_target.id, scan_profile="full")
+        TEST_USER_ID, CreateScanRequest(target_id=audit_target.id, scan_profile="full")
     )
 
-    service.delete_scan(scan_job.id)
+    service.delete_scan(TEST_USER_ID, scan_job.id)
 
     events = _events(db_session, AuditEventType.SCAN_DELETED)
     assert len(events) == 1
@@ -204,10 +216,19 @@ def _package(scan_id, ipv4="10.10.10.1"):
 
 @pytest.fixture
 def scan_job(db_session):
-    target = Target(target="10.10.10.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.10.10.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.commit()
     return job
@@ -292,7 +313,7 @@ def test_inventory_processing_failed_event_survives_rollback(db_session, scan_jo
 
 
 def _seed_finding(db_session, scan_job):
-    asset = Asset(ipv4="10.20.0.1")
+    asset = Asset(user_id=TEST_USER_ID, ipv4="10.20.0.1")
     db_session.add(asset)
     db_session.flush()
     vuln = Vulnerability(name="Risk Vuln", severity_score=6.0, severity_rating="Medium")
@@ -310,10 +331,19 @@ def _seed_finding(db_session, scan_job):
 
 @pytest.fixture
 def risk_scan_job(db_session):
-    target = Target(target="10.20.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.20.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    job = ScanJob(target_id=target.id, status=ScanStatus.COMPLETED, scan_type="full")
+    job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.COMPLETED,
+        scan_type="full",
+    )
     db_session.add(job)
     db_session.flush()
     return job
@@ -470,7 +500,9 @@ def test_ai_recommendation_generated_event_shares_transaction(
     audit_service = _audit(db_session)
     service = _ai_service(db_session, audit_service, _FakeAIManager())
 
-    recommendation = service.generate_recommendation(vulnerability_risk.id)
+    recommendation = service.generate_recommendation(
+        TEST_USER_ID, vulnerability_risk.id
+    )
 
     events = _events(db_session, AuditEventType.AI_RECOMMENDATION_GENERATED)
     assert len(events) == 1
@@ -491,7 +523,7 @@ def test_ai_recommendation_failed_event_on_provider_failure(
     )
 
     with pytest.raises(AIProviderException):
-        service.generate_recommendation(vulnerability_risk.id)
+        service.generate_recommendation(TEST_USER_ID, vulnerability_risk.id)
 
     events = _events(db_session, AuditEventType.AI_RECOMMENDATION_FAILED)
     assert len(events) == 1
@@ -511,8 +543,8 @@ def test_ai_recommendation_generated_no_duplicate_event_per_idempotent_call(
     manager = _FakeAIManager()
     service = _ai_service(db_session, audit_service, manager)
 
-    service.generate_recommendation(vulnerability_risk.id)
-    service.generate_recommendation(vulnerability_risk.id)
+    service.generate_recommendation(TEST_USER_ID, vulnerability_risk.id)
+    service.generate_recommendation(TEST_USER_ID, vulnerability_risk.id)
 
     assert manager.calls == 1  # provider only called once; second call was idempotent
     events = _events(db_session, AuditEventType.AI_RECOMMENDATION_GENERATED)
@@ -524,10 +556,19 @@ def test_ai_recommendation_generated_no_duplicate_event_per_idempotent_call(
 
 @pytest.fixture
 def scan_with_calculated_risk(db_session):
-    target = Target(target="10.30.0.1", target_type=TargetType.IPV4)
+    target = Target(
+        user_id=TEST_USER_ID,
+        target="10.30.0.1",
+        target_type=TargetType.IPV4,
+    )
     db_session.add(target)
     db_session.flush()
-    scan_job = ScanJob(target_id=target.id, status=ScanStatus.RUNNING, scan_type="full")
+    scan_job = ScanJob(
+        user_id=TEST_USER_ID,
+        target_id=target.id,
+        status=ScanStatus.RUNNING,
+        scan_type="full",
+    )
     db_session.add(scan_job)
     db_session.flush()
 
@@ -579,7 +620,7 @@ def test_report_generated_event_shares_transaction(
     scan_job, audit_service = scan_with_calculated_risk
     service = _report_service(db_session, audit_service, tmp_path)
 
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
     events = _events(db_session, AuditEventType.REPORT_GENERATED)
     assert len(events) == 1
@@ -600,7 +641,7 @@ def test_report_generation_failed_event_survives_rollback(
         ),
         pytest.raises(ReportRenderingException),
     ):
-        service.generate_report(scan_job.id)
+        service.generate_report(TEST_USER_ID, scan_job.id)
 
     events = _events(db_session, AuditEventType.REPORT_GENERATION_FAILED)
     assert len(events) == 1
@@ -613,9 +654,9 @@ def test_report_deleted_event_persisted(
 ):
     scan_job, audit_service = scan_with_calculated_risk
     service = _report_service(db_session, audit_service, tmp_path)
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
-    service.delete_report(report.id)
+    service.delete_report(TEST_USER_ID, report.id)
 
     events = _events(db_session, AuditEventType.REPORT_DELETED)
     assert len(events) == 1
@@ -627,9 +668,9 @@ def test_report_downloaded_event_persisted_without_path(
 ):
     scan_job, audit_service = scan_with_calculated_risk
     service = _report_service(db_session, audit_service, tmp_path)
-    report = service.generate_report(scan_job.id)
+    report = service.generate_report(TEST_USER_ID, scan_job.id)
 
-    service.get_report_file_path(report.id)
+    service.get_report_file_path(TEST_USER_ID, report.id)
 
     events = _events(db_session, AuditEventType.REPORT_DOWNLOADED)
     assert len(events) == 1

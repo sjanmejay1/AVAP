@@ -5,9 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.ai.manager import AIManager
 from app.api.dependencies.audit import get_audit_context, get_audit_service
+from app.api.dependencies.auth import get_api_key_service, get_current_user
 from app.api.dependencies.database import get_db
 from app.api.responses.api_response import SuccessResponse
 from app.audit.context import AuditContext
+from app.core.enums import AIKeyProvider
+from app.models.user import User
 from app.repositories.ai_recommendation_repository import AIRecommendationRepository
 from app.repositories.network_service_repository import NetworkServiceRepository
 from app.repositories.risk_repository import RiskRepository
@@ -18,6 +21,7 @@ from app.schemas.ai import (
     AIRecommendationResponse,
 )
 from app.services.ai_service import AIService
+from app.services.api_key_service import ApiKeyService
 from app.services.audit_service import AuditService
 
 router = APIRouter()
@@ -26,8 +30,11 @@ router = APIRouter()
 def get_ai_service(
     db: Session = Depends(get_db),
     audit_service: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(get_current_user),
+    api_keys: ApiKeyService = Depends(get_api_key_service),
 ) -> AIService:
-    """Dependency to inject a fully constructed AIService into routes."""
+    """AIService whose provider calls use the caller's own saved key."""
+    api_key = api_keys.find_decrypted_key(current_user.id, AIKeyProvider.OPENROUTER)
     return AIService(
         session=db,
         ai_recommendation_repository=AIRecommendationRepository(db),
@@ -35,6 +42,7 @@ def get_ai_service(
         vulnerability_repository=VulnerabilityRepository(db),
         network_service_repository=NetworkServiceRepository(db),
         audit_service=audit_service,
+        ai_manager=AIManager(api_key=api_key),
     )
 
 
@@ -46,10 +54,11 @@ def get_ai_service(
 def get_recommendation(
     assessment_id: uuid.UUID,
     service: AIService = Depends(get_ai_service),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Retrieve the persisted AI remediation recommendation for a
     vulnerability-scoped risk assessment, without triggering generation."""
-    recommendation = service.get_recommendation(assessment_id)
+    recommendation = service.get_recommendation(current_user.id, assessment_id)
     return {"data": AIRecommendationResponse.model_validate(recommendation)}
 
 
@@ -61,6 +70,7 @@ def get_recommendation(
 def generate_recommendation(
     assessment_id: uuid.UUID,
     service: AIService = Depends(get_ai_service),
+    current_user: User = Depends(get_current_user),
     audit_context: AuditContext = Depends(get_audit_context),
 ) -> dict:
     """Generate an AI remediation recommendation for a vulnerability-scoped
@@ -68,7 +78,7 @@ def generate_recommendation(
     reused as long as the risk assessment has not been recalculated since.
     """
     recommendation = service.generate_recommendation(
-        assessment_id, audit_context=audit_context
+        current_user.id, assessment_id, audit_context=audit_context
     )
     return {"data": AIRecommendationResponse.model_validate(recommendation)}
 

@@ -1,6 +1,6 @@
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,6 +9,8 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globals: false,
     css: false,
+    // e2e/ holds Playwright specs, run with `npm run test:e2e`.
+    exclude: [...configDefaults.exclude, "e2e/**"],
     env: {
       // config/env.ts validates this at module load time (it's a required
       // public runtime config, not a secret) — every module that imports

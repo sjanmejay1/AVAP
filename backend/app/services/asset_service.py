@@ -18,6 +18,7 @@ class AssetService:
 
     def get_all_assets(
         self,
+        user_id: uuid.UUID,
         skip: int = 0,
         limit: int = 50,
         ip: str | None = None,
@@ -27,8 +28,9 @@ class AssetService:
         target_id: uuid.UUID | None = None,
         scan_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Asset], int]:
-        """Retrieve a paginated, filtered list of assets."""
+        """Retrieve a paginated, filtered list of the user's assets."""
         return self.repository.get_all(
+            user_id=user_id,
             skip=skip,
             limit=limit,
             ip=ip,
@@ -39,23 +41,23 @@ class AssetService:
             scan_id=scan_id,
         )
 
-    def get_asset(self, asset_id: uuid.UUID) -> Asset:
+    def get_asset(self, asset_id: uuid.UUID, user_id: uuid.UUID) -> Asset:
         """Retrieve a single asset by ID, including its services.
 
         Raises:
             NotFoundException: If the asset does not exist.
         """
-        asset = self.repository.get_by_id(asset_id)
+        asset = self.repository.get_owned(asset_id, user_id)
         if not asset:
             raise NotFoundException(f"Asset with ID {asset_id} not found.")
         return asset
 
-    def delete_asset(self, asset_id: uuid.UUID) -> None:
+    def delete_asset(self, asset_id: uuid.UUID, user_id: uuid.UUID) -> None:
         """Delete an asset and commit the transaction.
 
         Raises:
             NotFoundException: If the asset does not exist.
         """
-        asset = self.get_asset(asset_id)
+        asset = self.get_asset(asset_id, user_id)
         self.repository.delete(asset)
         self.repository.session.commit()

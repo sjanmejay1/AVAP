@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 describe("cn", () => {
   it("lets a design-system type-scale override (text-h1) win over a base Tailwind font-size class", () => {
-    // Regression: without registering the custom design_system.md §7 type
+    // Regression: without registering the custom docs/design_system.md §7 type
     // scale in tailwind-merge's font-size group, overriding a component's
     // base "text-sm" via className="text-h1" would keep both classes
     // instead of the override replacing it.

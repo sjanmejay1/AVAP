@@ -13,10 +13,12 @@ def test_scanner_manager_profile_parsing():
     manager = ScannerManager()
 
     # Success cases
-    assert manager._parse_scan_profile("discovery") == ScanProfile.DISCOVERY
-    assert manager._parse_scan_profile("ping") == ScanProfile.DISCOVERY
-    assert manager._parse_scan_profile("port_scan") == ScanProfile.PORT_SCAN
-    assert manager._parse_scan_profile("FAST") == ScanProfile.PORT_SCAN
+    assert manager._parse_scan_profile("quick") == ScanProfile.QUICK
+    # Retired profile names from earlier API versions map to QUICK.
+    assert manager._parse_scan_profile("discovery") == ScanProfile.QUICK
+    assert manager._parse_scan_profile("ping") == ScanProfile.QUICK
+    assert manager._parse_scan_profile("port_scan") == ScanProfile.QUICK
+    assert manager._parse_scan_profile("FAST") == ScanProfile.QUICK
     assert manager._parse_scan_profile("full") == ScanProfile.FULL
 
     # Invalid profile
@@ -45,7 +47,7 @@ def test_scanner_manager_dispatch_scan():
 
     assert result is mock_artifact
     mock_validator.validate_request.assert_called_once_with(
-        target, ScannerType.NMAP, ScanProfile.DISCOVERY
+        target, ScannerType.NMAP, ScanProfile.QUICK
     )
     mock_factory.get_adapter.assert_called_once_with(ScannerType.NMAP)
-    mock_adapter.execute.assert_called_once_with(scan_id, target, ScanProfile.DISCOVERY)
+    mock_adapter.execute.assert_called_once_with(scan_id, target, ScanProfile.QUICK)
