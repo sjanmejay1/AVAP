@@ -100,7 +100,7 @@ It should print "Hello from Docker!".
 The deployment files (`docker-compose.prod.yml`, `deploy/`) must be committed and pushed to the branch you deploy (here `main`).
 
 ```bash
-git clone --branch main https://github.com/sjanmejay1/VASP.git avap
+git clone --branch main https://github.com/sjanmejay1/AVAP.git avap
 cd avap
 sh deploy/make-env.sh avap-yourname.duckdns.org
 ```

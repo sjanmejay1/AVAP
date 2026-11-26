@@ -64,8 +64,8 @@ one command. You don't need Python, Node or Nmap installed.
 ### 2.2 Get the code
 
 ```bash
-git clone https://github.com/sjanmejay1/VASP.git
-cd VASP
+git clone https://github.com/sjanmejay1/AVAP.git
+cd AVAP
 ```
 
 ### 2.3 Create your `.env` file
