@@ -40,7 +40,9 @@ USER nextjs
 
 EXPOSE 3000
 
+# 127.0.0.1, not localhost: in Alpine "localhost" resolves to ::1 first, and
+# the Next.js server listens on IPv4 (HOSTNAME=0.0.0.0) only.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-    CMD wget -qO- http://localhost:3000/ > /dev/null || exit 1
+    CMD wget -qO- http://127.0.0.1:3000/ > /dev/null || exit 1
 
 CMD ["node", "server.js"]

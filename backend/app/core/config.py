@@ -12,7 +12,10 @@ from cryptography.fernet import Fernet
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.security import is_valid_allowlist_entry, normalize_allowlist_entry
+
 _MIN_JWT_SECRET_LENGTH = 64
+_MIN_PROXY_SECRET_LENGTH = 32
 SUPPORTED_AI_PROVIDERS = frozenset({"openrouter"})
 _MODEL_ID_PATTERN = re.compile(r"[\w.-]+/[\w.-]+(:[\w-]+)?")
 # OpenRouter's router that only ever picks among free models.
@@ -55,6 +58,11 @@ class Settings(BaseSettings):
     login_failure_window_minutes: int = Field(default=15, ge=1)
     # New accounts allowed per client IP in a sliding hour.
     registrations_per_ip_per_hour: int = Field(default=10, ge=1)
+    # Shared secret a trusted reverse proxy sends with every request. When
+    # set, the proxy's X-AVAP-Client-IP header is believed for requests that
+    # carry it (see app.core.security.resolve_client_ip). Empty = off: only
+    # the direct connection address is ever used.
+    trusted_proxy_secret: SecretStr = SecretStr("")
 
     # Database
     database_url: str | None = None
@@ -122,6 +130,22 @@ class Settings(BaseSettings):
     # rejected so a typo (e.g. 0.0.0.0/0) cannot launch a sweep of a huge
     # or public address range. /16 = 65,536 addresses.
     min_cidr_prefix_length: int = Field(default=16, ge=0, le=32)
+    # Comma-separated IPv4 addresses, IPv4 CIDRs and hostnames a public
+    # deployment may scan. Empty = no restriction beyond the rules above.
+    scan_target_allowlist: str = ""
+
+    @field_validator("scan_target_allowlist")
+    @classmethod
+    def validate_scan_target_allowlist(cls, value: str) -> str:
+        """Refuse startup on an entry that is not an IP, CIDR or hostname."""
+        for entry in value.split(","):
+            normalized = normalize_allowlist_entry(entry)
+            if normalized and not is_valid_allowlist_entry(normalized):
+                raise ValueError(
+                    "SCAN_TARGET_ALLOWLIST entries must be IPv4 addresses, "
+                    "IPv4 CIDR ranges or hostnames."
+                )
+        return value
 
     @field_validator("nmap_scan_mode")
     @classmethod
@@ -223,6 +247,12 @@ class Settings(BaseSettings):
                 "APP_ENCRYPTION_KEY must be a Fernet key "
                 "(32 url-safe base64-encoded bytes)."
             ) from None
+        proxy_secret = self.trusted_proxy_secret.get_secret_value()
+        if proxy_secret and len(proxy_secret) < _MIN_PROXY_SECRET_LENGTH:
+            raise ValueError(
+                "TRUSTED_PROXY_SECRET must be empty or at least "
+                f"{_MIN_PROXY_SECRET_LENGTH} random characters."
+            )
 
     def validate_ai_settings(self) -> None:
         """Fail fast on a provider this build does not implement (for
@@ -241,6 +271,15 @@ class Settings(BaseSettings):
     def storage_local_path(self) -> Path:
         """Root directory of the local object store."""
         return Path(self.storage_local_directory)
+
+    @property
+    def scan_target_allowlist_entries(self) -> list[str]:
+        """The normalized allowlist; empty means unrestricted."""
+        entries = (
+            normalize_allowlist_entry(entry)
+            for entry in self.scan_target_allowlist.split(",")
+        )
+        return [entry for entry in entries if entry]
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

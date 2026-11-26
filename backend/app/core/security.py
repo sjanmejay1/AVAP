@@ -1,5 +1,7 @@
+import hmac
 import ipaddress
 import re
+from collections.abc import Sequence
 
 from app.core.constants import HOSTNAME_MAX_LABEL_LENGTH, HOSTNAME_MAX_LENGTH
 
@@ -112,3 +114,81 @@ def normalize_target_value(value: str) -> str:
         The normalized target string.
     """
     return value.strip().lower()
+
+
+# Headers a trusted reverse proxy (Caddy in docker-compose.prod.yml) adds to
+# every request it forwards. The client IP is believed only when the shared
+# secret matches; a client can never set either header usefully on its own.
+PROXY_SECRET_HEADER = "X-AVAP-Proxy-Secret"  # noqa: S105 # nosec B105 -- header name
+CLIENT_IP_HEADER = "X-AVAP-Client-IP"
+_MAX_IP_LENGTH = 45
+
+ALLOWLIST_REJECTION_MESSAGE = "This target isn't on this deployment's approved list."
+
+
+def resolve_client_ip(
+    peer: str | None,
+    forwarded_ip: str | None,
+    presented_secret: str | None,
+    expected_secret: str,
+) -> str | None:
+    """Return the client IP to use for throttling and audit records.
+
+    The proxy-supplied IP is used only when a secret is configured, the
+    request presents exactly that secret, and the value is a valid IP
+    address. In every other case the direct connection address is used.
+    """
+    if not expected_secret or not presented_secret or not forwarded_ip:
+        return peer
+    if not hmac.compare_digest(
+        presented_secret.encode("utf-8"), expected_secret.encode("utf-8")
+    ):
+        return peer
+    candidate = forwarded_ip.strip()
+    if len(candidate) > _MAX_IP_LENGTH:
+        return peer
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return peer
+
+
+def normalize_allowlist_entry(entry: str) -> str:
+    """Lower-case an allowlist entry and drop a trailing FQDN dot."""
+    return normalize_target_value(entry).rstrip(".")
+
+
+def is_valid_allowlist_entry(entry: str) -> bool:
+    """An allowlist entry is an IPv4 address, an IPv4 CIDR or a hostname."""
+    return (
+        is_valid_ipv4(entry) or is_valid_ipv4_cidr(entry) or is_valid_hostname(entry)
+    )
+
+
+def is_target_allowed(target: str, allowlist: Sequence[str]) -> bool:
+    """Whether a scan target falls inside the configured allowlist.
+
+    An empty allowlist allows everything. A hostname matches only an equal
+    hostname entry: no DNS lookup happens, so a hostname entry never
+    authorizes the addresses it resolves to. An IPv4 address or CIDR must
+    lie entirely inside an IPv4 or CIDR entry.
+    """
+    if not allowlist:
+        return True
+    candidate = normalize_allowlist_entry(target)
+    candidate_network = _as_ipv4_network(candidate)
+    for entry in allowlist:
+        entry_network = _as_ipv4_network(entry)
+        if candidate_network is None:
+            if entry_network is None and entry == candidate:
+                return True
+        elif entry_network is not None and candidate_network.subnet_of(entry_network):
+            return True
+    return False
+
+
+def _as_ipv4_network(value: str) -> ipaddress.IPv4Network | None:
+    try:
+        return ipaddress.IPv4Network(value, strict=False)
+    except ValueError:
+        return None
