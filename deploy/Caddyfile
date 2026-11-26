@@ -1,0 +1,27 @@
+# AVAP reverse proxy (used by docker-compose.prod.yml).
+#
+# {$AVAP_DOMAIN} is read once at startup. The proxy secret is read with
+# {env.TRUSTED_PROXY_SECRET} at request time, so it is never written into
+# Caddy's saved configuration.
+
+{$AVAP_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	@backend path /api/* /health
+	handle @backend {
+		reverse_proxy backend:8000 {
+			# "set" semantics: any value a client sent is replaced.
+			header_up X-AVAP-Proxy-Secret {env.TRUSTED_PROXY_SECRET}
+			header_up X-AVAP-Client-IP {client_ip}
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

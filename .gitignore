@@ -4,7 +4,7 @@ handoff.md
 Run.md
 .env
 .env*
-deployment.md
+/deployment.md
 docker-data/
 volumes/
 .declutter-trash/
@@ -17,6 +17,7 @@ audit/
 .ruff_cache/
 .mypy_cache/
 .uv_env/
+docker-compose.yml
 
 # Raw scan output and the local object store (may contain sensitive data).
 # Anchored: an unanchored "storage/" would also hide backend/app/storage/.

@@ -1,0 +1,50 @@
+# AVAP — public deployment on one server (for example an Oracle Cloud VM).
+# Layer it on the main file and the demo targets:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml \
+#                  -f docker-compose.prod.yml up -d --build
+#
+# deploy/make-env.sh writes a .env that sets COMPOSE_FILE to exactly that
+# list, so on the server a plain `docker compose up -d --build` is enough.
+#
+# Caddy is the only container reachable from the internet (ports 80/443).
+# It gets a free Let's Encrypt certificate for AVAP_DOMAIN and routes
+#   /api/*, /health  -> backend:8000  (adding the trusted-proxy headers)
+#   everything else  -> frontend:3000
+# so the browser sees one origin and the refresh cookie stays first-party.
+# The backend and frontend stay bound to 127.0.0.1 on the server.
+
+services:
+  backend:
+    environment:
+      CORS_ALLOWED_ORIGINS: https://${AVAP_DOMAIN:?Set AVAP_DOMAIN in .env}
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:?Set TRUSTED_PROXY_SECRET in .env}
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${AVAP_DOMAIN:?Set AVAP_DOMAIN in .env}
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    environment:
+      AVAP_DOMAIN: ${AVAP_DOMAIN:?Set AVAP_DOMAIN in .env}
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:?Set TRUSTED_PROXY_SECRET in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and Caddy's state survive restarts and rebuilds.
+      - avap_caddy_data:/data
+      - avap_caddy_config:/config
+
+volumes:
+  avap_caddy_data:
+  avap_caddy_config:

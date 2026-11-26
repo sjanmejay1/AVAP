@@ -17,7 +17,9 @@ from app.core.exceptions import (
     ValidationException,
 )
 from app.core.security import (
+    ALLOWLIST_REJECTION_MESSAGE,
     cidr_exceeds_scope,
+    is_target_allowed,
     is_valid_hostname,
     is_valid_ipv4,
     is_valid_ipv4_cidr,
@@ -124,6 +126,28 @@ class TargetService:
                 details={"target": target_value, "min_prefix_length": min_prefix},
             )
 
+    def _enforce_allowlist(self, target_value: str) -> None:
+        """Reject targets outside SCAN_TARGET_ALLOWLIST (when one is set).
+
+        Raises:
+            ValidationException: If the target is not on the allowlist.
+        """
+        allowlist = get_settings().scan_target_allowlist_entries
+        if is_target_allowed(target_value, allowlist):
+            return
+        logger.info(
+            "Target rejected by the scan-target allowlist",
+            extra={
+                "context": {
+                    "operation": "enforce_allowlist",
+                    "reason": "not_on_allowlist",
+                }
+            },
+        )
+        raise ValidationException(
+            message=ALLOWLIST_REJECTION_MESSAGE, details={"target": target_value}
+        )
+
     def create_target(
         self,
         user_id: uuid.UUID,
@@ -144,6 +168,7 @@ class TargetService:
         # 2. Validate format and classify type
         target_type = self._determine_target_type(normalized_value)
         self._enforce_cidr_scope(normalized_value, target_type)
+        self._enforce_allowlist(normalized_value)
 
         # 3. Prevent duplicates
         existing = self.repository.get_by_value(normalized_value, user_id)
@@ -221,6 +246,7 @@ class TargetService:
         normalized_value = normalize_target_value(request.target)
         target_type = self._determine_target_type(normalized_value)
         self._enforce_cidr_scope(normalized_value, target_type)
+        self._enforce_allowlist(normalized_value)
 
         # Check for duplicates on update (excluding self)
         existing = self.repository.get_by_value(normalized_value, user_id)

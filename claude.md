@@ -12,6 +12,7 @@ Backend (backend/): Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL, P
 Frontend (frontend/): Next.js App Router, TypeScript, TanStack Query, Zustand, shadcn/ui + Tailwind, React Hook Form + Zod, Vitest.
 Scanners: Nmap only, QUICK and FULL profiles (OpenVAS stub removed 2026-11-20). Raw output goes to object storage (local folder backend/storage/ by default, or S3; code in app/storage/).
 AI: OpenRouter only, FREE models only (app/ai/providers/openrouter.py; OPENROUTER_MODEL must end in ':free' or be 'openrouter/free'), called with each user's own encrypted key; no server-wide key. AI findings are advisory and excluded from risk unless AI_FINDINGS_IN_RISK=true.
+Deployment: one Oracle Cloud Always Free VM running the compose stack + docker-compose.prod.yml (Caddy HTTPS proxy, deploy/Caddyfile); deploy/make-env.sh writes the server .env. Caddy sends X-AVAP-Proxy-Secret/X-AVAP-Client-IP; the backend trusts that IP only when TRUSTED_PROXY_SECRET matches. SCAN_TARGET_ALLOWLIST (empty = any target) limits what a public deployment scans.
 
 
 Commands
@@ -23,9 +24,10 @@ Frontend dev: npm run dev
 Frontend checks: npm run test (vitest) · npm run typecheck (tsc --noEmit) · npm run lint (eslint)
 Browser tests: npm run e2e:stack:up · npm run test:e2e (Playwright, 13 tests against docker-compose.demo.yml targets) · npm run e2e:stack:down
 Migrations: alembic upgrade head (11 migrations, 0001→0011)
+Public deploy (on the server): sh deploy/make-env.sh <domain> · docker compose up -d --build (guide: docs/deployment.md)
 
 
-Quality bar to match: 661 backend tests + 180 frontend tests + 13 Playwright tests passing, 0 ruff/mypy/bandit findings, pip-audit clean, frontend tsc/eslint/next build clean (browser-test phase, 2026-11-24). Run pytest with DATABASE_URL=sqlite:// as a safety net.
+Quality bar to match: 705 backend tests + 183 frontend tests + 13 Playwright tests passing, 0 ruff/mypy/bandit findings, pip-audit clean, frontend tsc/eslint/next build clean (deployment phase, 2026-11-26). Run pytest with DATABASE_URL=sqlite:// as a safety net.
 
 Architecture — non-negotiable
 
@@ -104,6 +106,7 @@ docs/ai_contract.md — full engineering contract; this file is its working summ
 docs/archive/ (backend_api_manifest.yaml, Backend_Walk.md, old Run.md) — API spec/walkthrough (gitignored, local-only)
 docs/modules/01–10 — per-module specs
 docs/project.md — scope and deferred phases
+docs/deployment.md — Oracle Cloud VM deployment, step by step
 
 
 If backend_api_manifest.yaml and running code disagree, trust the code and flag the drift.

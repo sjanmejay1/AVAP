@@ -28,6 +28,7 @@ open-source software.
 7. [Troubleshooting](#7-troubleshooting)
 8. [Security notes](#8-security-notes)
 9. [Project layout and further docs](#9-project-layout-and-further-docs)
+10. [Public deployment (Oracle Cloud)](#10-public-deployment-oracle-cloud)
 
 ---
 
@@ -63,8 +64,8 @@ one command. You don't need Python, Node or Nmap installed.
 ### 2.2 Get the code
 
 ```bash
-git clone https://github.com/sjanmejay1/VASP.git
-cd VASP
+git clone https://github.com/sjanmejay1/AVAP.git
+cd AVAP
 ```
 
 ### 2.3 Create your `.env` file
@@ -119,7 +120,7 @@ docker compose ps
 
 ### 2.5 Open the app
 
-- App: **http://localhost:3000**
+- App: **http://localhost:3001**
 - API health check: http://localhost:8000/health
 - API docs (Swagger): http://localhost:8000/docs
 
@@ -265,14 +266,17 @@ values in the root `.env`. For local development, set them in `backend/.env`.
 | `APP_ENCRYPTION_KEY` | — (**required**, Fernet key) | Encrypts users' saved AI keys |
 | `POSTGRES_DB` / `POSTGRES_USER` | `avap` / `avap_user` | Database name and user |
 | `DATABASE_URL` | unset | Full URL; overrides the `POSTGRES_*` values. Use `postgresql+psycopg2://…` |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Browser origin(s) allowed to call the API, comma-separated |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` (Docker: `http://localhost:3001`) | Browser origin(s) allowed to call the API, comma-separated |
 | `FRONTEND_API_BASE_URL` | `http://localhost:8000` | (Docker) URL the **browser** uses to reach the API. It's baked in at build time, so rebuild after changing it |
-| `BACKEND_PORT` / `FRONTEND_PORT` | `8000` / `3000` | (Docker) host ports, bound to `127.0.0.1` only |
+| `BACKEND_PORT` / `FRONTEND_PORT` | `8000` / `3001` | (Docker) host ports, bound to `127.0.0.1` only |
 | `NMAP_EXECUTABLE` | `/usr/bin/nmap` | (local dev) path to the Nmap binary |
 | `NMAP_SCAN_MODE` | `auto` | `auto`, `privileged` (raw SYN scans) or `unprivileged` (TCP connect) |
 | `SCAN_TIMEOUT` | `900` | Seconds before a QUICK scan is stopped |
 | `MIN_CIDR_PREFIX_LENGTH` | `16` | (local dev; not passed through by `docker-compose.yml`) widest CIDR range allowed (`/16` = 65,536 addresses) |
 | `REGISTRATIONS_PER_IP_PER_HOUR` | `10` | Sign-up rate limit |
+| `SCAN_TARGET_ALLOWLIST` | empty (any target) | Comma-separated IPv4 addresses, CIDRs and hostnames that may be scanned. Set it on any public deployment |
+| `TRUSTED_PROXY_SECRET` | empty (off) | Shared secret from the HTTPS proxy (Caddy) so the backend uses the real client IP for rate limits and the audit log. 32+ characters |
+| `AVAP_DOMAIN` | — | (public deployment) hostname Caddy gets an HTTPS certificate for |
 | `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Must end in `:free` (or be `openrouter/free`) |
 | `AI_FINDINGS_IN_RISK` | `false` | AI-inferred findings stay out of the risk score unless this is `true` |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` for raw scan output. For S3, also set `S3_BUCKET`, `S3_REGION` and AWS credentials |
@@ -322,13 +326,13 @@ npm run e2e:stack:down
 | `docker compose up` says *Set POSTGRES_PASSWORD / JWT_SECRET_KEY / APP_ENCRYPTION_KEY in .env* | Create the root `.env` (step 2.3) and fill in all three |
 | Backend container keeps restarting | Run `docker compose logs backend`. Usually the JWT key is too short or `APP_ENCRYPTION_KEY` isn't a valid Fernet key |
 | Migrations fail with an authentication or URL error | `POSTGRES_PASSWORD` contains special characters. Use letters and digits only, then `docker compose down -v` (this **deletes the data**) and start again |
-| Browser shows a network or CORS error | `CORS_ALLOWED_ORIGINS` must exactly match the address in your browser bar (e.g. `http://localhost:3000`), and `FRONTEND_API_BASE_URL` / `NEXT_PUBLIC_API_BASE_URL` must point to the backend |
+| Browser shows a network or CORS error | `CORS_ALLOWED_ORIGINS` must exactly match the address in your browser bar (e.g. `http://localhost:3001`), and `FRONTEND_API_BASE_URL` / `NEXT_PUBLIC_API_BASE_URL` must point to the backend |
 | You're logged out on every page reload | The session cookie is `Secure`: it works on `http://localhost` and over HTTPS, but not over plain HTTP on another IP or hostname. Use localhost, or put the app behind HTTPS |
 | A scan fails straight away (local dev) | `NMAP_EXECUTABLE` is wrong, or Nmap isn't installed. On Windows, reinstall Nmap with Npcap |
 | Scans work but OS detection or SYN scans are missing | Nmap lacks raw-socket rights. AVAP falls back to TCP connect scans automatically. Run with admin/root or `NMAP_SCAN_MODE=privileged` if you need them |
 | "Download PDF" fails with 422 | The scan has no risk score yet (it is calculated automatically when a scan completes). Wait for the scan to finish, or check the backend logs |
 | AI remediation fails | No OpenRouter key on your Profile, the key is invalid, or the free model is rate-limited. Everything else keeps working |
-| Port 3000 or 8000 is already in use | Change `FRONTEND_PORT` / `BACKEND_PORT` in `.env`. Also update `CORS_ALLOWED_ORIGINS` (and `FRONTEND_API_BASE_URL` if you change the backend port), then `docker compose up -d --build` |
+| Port 3001 or 8000 is already in use | Change `FRONTEND_PORT` / `BACKEND_PORT` in `.env`. Also update `CORS_ALLOWED_ORIGINS` (and `FRONTEND_API_BASE_URL` if you change the backend port), then `docker compose up -d --build` |
 
 ---
 
@@ -337,14 +341,14 @@ npm run e2e:stack:down
 - **Secrets** only ever live in `.env` files, which git ignores. The
   committed `*.example` files hold placeholders only.
 - **Default exposure:** Docker publishes the ports on `127.0.0.1` only, so
-  the app can't be reached from other machines. To host it for others, put
-  it behind an HTTPS reverse proxy and set `CORS_ALLOWED_ORIGINS` and
-  `FRONTEND_API_BASE_URL` to the public `https://` addresses.
+  the app can't be reached from other machines. To host it for others, use
+  the Caddy HTTPS setup in [docs/deployment.md](docs/deployment.md).
 - **Scanning reach:** the backend scans from wherever it runs. Private
   network ranges can be scanned on purpose, because that's what a LAN
   assessment is. If you open registration to the public, remember that any
   user can then scan whatever your server can reach, including other
-  machines on its private network. Only host it publicly if you accept that.
+  machines on its private network. Set `SCAN_TARGET_ALLOWLIST` on any public
+  deployment (`deploy/make-env.sh` does this for you).
 - **Built-in safeguards:**
   - Passwords are hashed with Argon2id.
   - Access tokens are short-lived and kept in memory only. The refresh token
@@ -376,10 +380,27 @@ npm run e2e:stack:down
 │   ├── architecture/        system, data-flow, database and security design
 │   ├── modules/             one spec per backend module
 │   ├── backend.md, frontend.md, design_system.md
+├── deploy/                  Caddyfile and make-env.sh for public deployment
 ├── docker-compose.yml       full stack
 ├── docker-compose.demo.yml  optional demo scan targets
+├── docker-compose.prod.yml  public deployment: Caddy HTTPS proxy
 └── env.docker.example       template for the root .env
 ```
 
 Some specs in `docs/` predate later changes. Where they disagree with the
 code, the code is right.
+
+---
+
+## 10. Public deployment (Oracle Cloud)
+
+[docs/deployment.md](docs/deployment.md) puts the whole stack on one free
+Oracle Cloud VM, step by step and without prior Docker knowledge. Caddy
+serves it over HTTPS with a free certificate, and visitors can scan only
+the targets on the allowlist (the demo containers and `scanme.nmap.org` by
+default). In short, on the server:
+
+```bash
+sh deploy/make-env.sh your-name.duckdns.org
+docker compose up -d --build
+```

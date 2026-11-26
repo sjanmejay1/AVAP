@@ -4,7 +4,9 @@ from app.core.config import get_settings
 from app.core.enums import ScannerType, ScanProfile
 from app.core.exceptions import ValidationException
 from app.core.security import (
+    ALLOWLIST_REJECTION_MESSAGE,
     cidr_exceeds_scope,
+    is_target_allowed,
     is_valid_hostname,
     is_valid_ipv4,
     is_valid_ipv4_cidr,
@@ -72,6 +74,11 @@ class ExecutionValidator:
                 f"CIDR range '{target}' is too broad; the narrowest allowed "
                 f"prefix is /{min_prefix}."
             )
+
+        # Targets saved before SCAN_TARGET_ALLOWLIST was set (or changed)
+        # are re-checked before every scan.
+        if not is_target_allowed(target, get_settings().scan_target_allowlist_entries):
+            raise ValidationException(ALLOWLIST_REJECTION_MESSAGE)
 
         # Additional defense-in-depth sanitization check
         # Even though we use shell=False, we explicitly reject targets

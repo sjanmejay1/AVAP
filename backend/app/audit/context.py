@@ -50,10 +50,11 @@ class ActorContext:
 class RequestContext:
     """Request-scoped correlation context, safe to persist as audit evidence.
 
-    `source_ip` is always the direct ASGI connection address
-    (`Request.client.host`), never a client-supplied forwarded header —
-    AVAP has no documented trusted reverse-proxy configuration, so
-    `X-Forwarded-For`/`X-Real-IP` must never be treated as authoritative.
+    `source_ip` is the direct ASGI connection address (`Request.client.host`)
+    unless the request carries the configured TRUSTED_PROXY_SECRET, in which
+    case it is the client IP that trusted proxy reports (see
+    `app.core.security.resolve_client_ip`). `X-Forwarded-For`/`X-Real-IP`
+    are never treated as authoritative.
     """
 
     request_id: str | None = None
