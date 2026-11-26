@@ -43,3 +43,19 @@ def test_cors_allowed_origins_list_empty_string_yields_empty_list():
     """
     settings = Settings(_env_file=None, cors_allowed_origins="")
     assert settings.cors_allowed_origins_list == []
+
+
+def test_effective_database_url_pins_the_psycopg2_driver():
+    """SQLAlchemy 2.1 defaults a bare ``postgresql://`` URL to psycopg v3,
+    which is not installed; the driver must be named explicitly.
+    """
+    settings = Settings(
+        _env_file=None,
+        database_url=None,
+        postgres_user="u",
+        postgres_password="p",
+        postgres_host="db",
+        postgres_port=5432,
+        postgres_db="avap",
+    )
+    assert settings.effective_database_url == "postgresql+psycopg2://u:p@db:5432/avap"
